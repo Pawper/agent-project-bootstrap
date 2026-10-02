@@ -80,3 +80,16 @@ Create, in order:
 7. The spec kit constitution, then the first spec.
 
 Then the first feature agent runs.
+
+## Where the pieces are
+
+When this skill runs from the plugin, the hooks in step 3 are already active and the files for the other steps
+are ready to copy from `${CLAUDE_PLUGIN_ROOT}/templates/`:
+
+- Step 1: `CLAUDE.md`, `AGENTS.md`, `.claude/generated-pages.txt`
+- Step 2: `.github/ISSUE_TEMPLATE/`, `.github/workflows/state-label.yml`, `scripts/labels.sh`, `scripts/board.sh`, `scripts/state.sh`
+- Step 4: `.github/workflows/ci.yml`, `scripts/ci/` (classes, classifier, merge queue), `.github/workflows/audit.yml`
+- Step 5: `SETUP.md`, `NOTICE.md`, `status/` and the `STATUS.md` it builds
+
+Copy them into the new repository, replace every CAPITALIZED placeholder, run `sh scripts/board.sh OWNER OWNER/REPO`,
+switch on the board's built-in workflows by hand, and build the status page once with `sh status/build.sh`.
