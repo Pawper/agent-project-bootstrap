@@ -75,6 +75,18 @@ sh status/build.sh
 
 Then switch on the board's built-in workflows by hand, as described below, and let the first feature agent run.
 
+## The user flow, start to finish
+
+This is what a person does with the plugin, from install to the first feature agent, and what runs on its own after that.
+
+1. **Install.** In a Claude Code session, add the marketplace and install the plugin with the two commands above. Pick project scope so every collaborator gets the hooks. From this moment the six hooks are live: deletes, forced pushes, full test sweeps, direct edits to generated pages, issues without a State label, and agent dispatches without a fitting model are refused with one sentence each.
+2. **Run the skill.** In a new or struggling repository, say `/project-bootstrap set this project up for many agents`. The skill walks the homes table, writes the rules into CLAUDE.md and AGENTS.md, and copies the templates in. Replace every capitalized placeholder.
+3. **Create the board and labels.** Run `sh scripts/board.sh OWNER OWNER/REPO`. It creates the seven state labels, the project board, its State field with the seven values, and links the repository.
+4. **Two settings GitHub cannot script.** In the board's Workflows tab, switch on the four built-in workflows listed under The project board. In branch protection on main, require exactly one check, `CI passed`, and leave "require branches to be up to date" off, as described under Branch protection on main.
+5. **Build the status page once.** Run `sh status/build.sh` and commit STATUS.md. From here on CI fails any PR that leaves the page stale, and the hook refuses hand edits to it.
+6. **Day to day.** Each task starts as an issue with a State, filed from the template or with `gh issue create --label state:ready`, and the coordinator sets the board field with `scripts/state.sh`. Agents work in worktrees, run only the tests for the files they changed, and open PRs. CI runs only the classes a PR touches and reports once through `CI passed`. The merge queue script merges a green PR without a re-run when main moved outside its classes. The full suite runs on main after every merge and opens a `ci-red` issue when it fails. Every night the audit comments on the tracking issue only when an issue has no State or a merged PR left one stale.
+7. **When a hook refuses something.** The message says what was blocked and what to do instead; do that. A project that really needs an exception changes `.claude/generated-pages.txt` or disables the plugin for that repository. Nobody works around a hook.
+
 ## What each hook blocks and why
 
 Every hook reads the tool call before it runs, and when it refuses, it prints one plain sentence saying what it blocked and what to do instead. The scripts are POSIX shell with awk and nothing else, so they run under Git Bash on Windows and on macOS and Linux as they are.
