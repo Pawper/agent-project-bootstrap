@@ -217,6 +217,20 @@ eq "empty response, no label" "" "$(state_label_from_body '### State
 _No response_')"
 eq "CRLF body" "state:parked" "$(state_label_from_body "$(printf '### State\r\n\r\nparked\r\n')")"
 
+printf '\n# spec_check_reason\n'
+eq "src with its spec is fine" "" "$(spec_check_reason 'src/auth.ts
+specs/sign-in/spec.md')"
+eq "src without a spec is missing" "missing" "$(spec_check_reason 'src/auth.ts
+README.md')"
+eq "the constitution does not count" "missing" "$(spec_check_reason 'src/auth.ts
+specs/constitution.md')"
+eq "no src, nothing to check" "" "$(spec_check_reason 'docs/a.md
+specs/constitution.md')"
+eq "many spec folders warns" "many 2" "$(spec_check_reason 'src/a.ts
+specs/sign-in/spec.md
+specs/billing/spec.md')"
+eq "a spec class" "specs" "$(classify_paths 'specs/sign-in/spec.md' "$rules")"
+
 printf '\n# audit helpers\n'
 eq "issues without a state label" "12
 15" "$(issues_without_state '12 bug,task

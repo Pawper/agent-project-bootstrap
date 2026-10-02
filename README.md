@@ -84,8 +84,9 @@ This is what a person does with the plugin, from install to the first feature ag
 3. **Create the board and labels.** Run `sh scripts/board.sh OWNER OWNER/REPO`. It creates the seven state labels, the project board, its State field with the seven values, and links the repository.
 4. **Two settings GitHub cannot script.** In the board's Workflows tab, switch on the four built-in workflows listed under The project board. In branch protection on main, require exactly one check, `CI passed`, and leave "require branches to be up to date" off, as described under Branch protection on main.
 5. **Build the status page once.** Run `sh status/build.sh` and commit STATUS.md. From here on CI fails any PR that leaves the page stale, and the hook refuses hand edits to it.
-6. **Day to day.** Each task starts as an issue with a State, filed from the template or with `gh issue create --label state:ready`, and the coordinator sets the board field with `scripts/state.sh`. Agents work in worktrees, run only the tests for the files they changed, and open PRs. CI runs only the classes a PR touches and reports once through `CI passed`. The merge queue script merges a green PR without a re-run when main moved outside its classes. The full suite runs on main after every merge and opens a `ci-red` issue when it fails. Every night the audit comments on the tracking issue only when an issue has no State or a merged PR left one stale.
-7. **When a hook refuses something.** The message says what was blocked and what to do instead; do that. A project that really needs an exception changes `.claude/generated-pages.txt` or disables the plugin for that repository. Nobody works around a hook.
+6. **Write the constitution and the first spec.** Fill in `specs/constitution.md` once, then copy `specs/FEATURE/` to `specs/<feature>/` for the first feature. If you use spec kit, run it inside that folder; the templates are plain Markdown and do not depend on it. From here on CI fails any PR that changes `src/` without a change in a spec folder.
+7. **Day to day.** Each task starts as an issue with a State, filed from the template or with `gh issue create --label state:ready`, and the coordinator sets the board field with `scripts/state.sh`. Agents work in worktrees, run only the tests for the files they changed, and open PRs. CI runs only the classes a PR touches and reports once through `CI passed`. The merge queue script merges a green PR without a re-run when main moved outside its classes. The full suite runs on main after every merge and opens a `ci-red` issue when it fails. Every night the audit comments on the tracking issue only when an issue has no State or a merged PR left one stale.
+8. **When a hook refuses something.** The message says what was blocked and what to do instead; do that. A project that really needs an exception changes `.claude/generated-pages.txt` or disables the plugin for that repository. Nobody works around a hook.
 
 ## What each hook blocks and why
 
@@ -121,6 +122,8 @@ All of them live in `templates/` and are meant to be copied into the project roo
 - `SETUP.md`: the one manual. Configuration by name, first run, migrations run, services.
 - `NOTICE.md`: credit for borrowed code, one line per item.
 - `status/`: one stub per feature in `stubs/`, a `services.txt`, and `lib.sh`, `build.sh` and `check.sh`. The build writes `STATUS.md`; the check fails when the page does not match the stubs, and CI runs it on every PR.
+- `specs/constitution.md` and `specs/FEATURE/spec.md`: the rules every spec obeys, written once, and the skeleton for one feature's spec. One folder per feature, so two PRs never edit the same spec file.
+- `scripts/ci/spec-check.sh`: fails a PR that changes `src/` without a change in a feature's spec folder. The constitution does not count, so nobody pokes it to satisfy the check. More than one spec folder in a PR is a warning that the task was too big, not a failure.
 - `scripts/ci/classes.txt`: which paths belong to which change class.
 - `scripts/ci/classify.sh`: prints the classes for a diff.
 - `scripts/ci/merge-queue.sh PR`: merges a green PR without a re-run when main moved only outside the PR's classes, or updates the branch so CI runs again when it moved inside them. Turn off "require branches to be up to date" in branch protection; this script is the queue.
@@ -189,7 +192,7 @@ ok    no overlap merges
 ok    overlap reruns
 ok    ci on main reruns
 
-126 passed, 0 failed
+132 passed, 0 failed
 ```
 
 ## License

@@ -63,6 +63,32 @@ state_label_from_body() {
   '
 }
 
+# spec_check_reason PATHS
+# PATHS is one changed path per line. Print "missing" when the change
+# touches src/ but no feature spec folder under specs/ (the constitution
+# does not count). Print "many N" when it touches N feature spec folders and
+# N is more than one, which is a warning, not a failure. Print nothing when
+# the change is fine or touches no source.
+spec_check_reason() {
+  sc_src=0
+  sc_folders=$(printf '%s\n' "$1" | tr -d '\r' | tr '\\' '/' | awk '
+    /^src\// { src = 1 }
+    /^specs\/[^\/]+\// { f = $0; sub(/^specs\//, "", f); sub(/\/.*/, "", f); folders[f] = 1 }
+    END {
+      n = 0
+      for (f in folders) n++
+      print src, n
+    }')
+  sc_src=${sc_folders%% *}
+  sc_n=${sc_folders#* }
+  [ "$sc_src" = 1 ] || return 0
+  if [ "$sc_n" -eq 0 ]; then
+    echo missing
+  elif [ "$sc_n" -gt 1 ]; then
+    echo "many $sc_n"
+  fi
+}
+
 # issues_without_state LINES
 # Each line is "NUMBER label,label,...". Print the numbers whose labels
 # include no "state:" label, one per line.

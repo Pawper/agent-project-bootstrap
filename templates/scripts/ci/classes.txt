@@ -5,6 +5,7 @@
 # globs * also matches a slash, so src/* covers the whole tree under src.
 ci     .github/* scripts/ci/*
 status status/* STATUS.md
+specs  specs/*
 data   seed/* migrations/*
 tests  tests/* test/*
 app    src/* package.json package-lock.json pyproject.toml go.mod Cargo.toml

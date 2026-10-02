@@ -90,6 +90,7 @@ are ready to copy from `${CLAUDE_PLUGIN_ROOT}/templates/`:
 - Step 2: `.github/ISSUE_TEMPLATE/`, `.github/workflows/state-label.yml`, `scripts/labels.sh`, `scripts/board.sh`, `scripts/state.sh`
 - Step 4: `.github/workflows/ci.yml`, `scripts/ci/` (classes, classifier, merge queue), `.github/workflows/audit.yml`
 - Step 5: `SETUP.md`, `NOTICE.md`, `status/` and the `STATUS.md` it builds
+- Step 7: `specs/constitution.md` and `specs/FEATURE/spec.md`, checked by `scripts/ci/spec-check.sh`
 
 Copy them into the new repository, replace every CAPITALIZED placeholder, run `sh scripts/board.sh OWNER OWNER/REPO`,
 switch on the board's built-in workflows by hand, and build the status page once with `sh status/build.sh`.
