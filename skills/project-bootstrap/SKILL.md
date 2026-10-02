@@ -59,11 +59,20 @@ If a rule has none of these, either give it one or accept that it will not hold.
 - No path filters that can skip a run on an update (a merge from main that touches only docs must still start one, or the queue waits forever).
 - A fallback runner when the self-hosted ones are offline.
 
+## 6. The project board, exactly
+
+Create one GitHub project for the repository and set it up so nothing has to be updated by hand:
+
+- **A State field**, single select, with these values: Ready, In progress, Waiting on owner, Waiting on a service, Parked, Dated, After launch. Create it with `gh project field-create <number> --owner <owner> --name State --data-type SINGLE_SELECT --single-select-options "Ready,In progress,Waiting on owner,Waiting on a service,Parked,Dated,After launch"`. Matching labels (`state: ready` and so on) on the repository, for the filing hook.
+- **Built-in workflows**, in the project's Workflows tab (the API cannot switch them on, so this is a one-time click each): Auto-add to project with the filter `is:issue is:open` on the repository; Item closed, set Status to Done; Pull request merged, set Status to Done; Auto-add sub-issues to project. Leave Auto-archive off until the board is busy.
+- **At filing**, the coordinator sets State on the new issue (`gh project item-edit` with the field and option ids from `gh project field-list`); the filing hook refuses an issue without a state label.
+- **The board view**: group by State. That view is the status report; nobody writes one.
+- **A nightly audit** (a scheduled workflow) lists open issues with no State or with a merged PR and a stale State, as one comment on a tracking issue, and says nothing when clean.
 ## 5. Outputs of this skill
 
 Create, in order:
 1. The repository with CLAUDE.md and AGENTS.md from section 1 and 2, short, pointing at the hooks and checks.
-2. The issue template with the State label; the project board with GitHub's built-in workflows on; the labels.
+2. The issue template with the State label; the project board set up exactly as section 6 says; the labels.
 3. The hooks (user or project settings): block delete, force-push, full sweeps, direct writes to generated pages, issue creation without a state label.
 4. The CI skeleton from section 4, with the classifier and the status-page check.
 5. The setup document, the notice file, the one-screen status page and its build and check scripts.

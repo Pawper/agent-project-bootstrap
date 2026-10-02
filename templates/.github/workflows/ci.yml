@@ -1,0 +1,104 @@
+# CI skeleton. A PR runs only the jobs for the classes it touches; a push to
+# main runs everything and opens an issue when it fails. There are no path
+# filters on the workflow itself: every update to a PR starts a run, so the
+# merge queue never waits on a run that was skipped.
+#
+# Replace each "echo" step with the project's real command. Keep the job
+# names: the merge queue reads nothing from them, but people do.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  classify:
+    runs-on: ubuntu-latest
+    outputs:
+      classes: ${{ steps.classes.outputs.classes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: classes
+        shell: sh
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+            case "$base" in 0000000000000000000000000000000000000000) base="${{ github.sha }}~1" ;; esac
+          fi
+          classes=$(sh scripts/ci/classify.sh "$base" "${{ github.sha }}")
+          echo "classes=$classes" >> "$GITHUB_OUTPUT"
+          echo "Classes: $classes"
+
+  app:
+    needs: classify
+    if: github.event_name == 'pull_request' && (contains(needs.classify.outputs.classes, 'app') || contains(needs.classify.outputs.classes, 'tests') || contains(needs.classify.outputs.classes, 'other'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run the tests for this class
+        run: echo "replace with the build and the app tests, sharded if slow"
+
+  data:
+    needs: classify
+    if: github.event_name == 'pull_request' && (contains(needs.classify.outputs.classes, 'data') || contains(needs.classify.outputs.classes, 'other'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the data shape
+        run: echo "replace with the seed and migration checks"
+
+  docs:
+    needs: classify
+    if: github.event_name == 'pull_request' && (contains(needs.classify.outputs.classes, 'docs') || contains(needs.classify.outputs.classes, 'other'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the docs
+        run: echo "replace with the link and spelling checks"
+
+  status-page:
+    # Runs on every PR and every push: the page must never go stale.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail when STATUS.md is stale
+        run: sh status/check.sh
+
+  full:
+    # The gate on main after every merge. The whole suite, nothing skipped.
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run everything
+        run: echo "replace with the full suite"
+
+  report-red:
+    needs: full
+    if: always() && github.event_name == 'push' && needs.full.result == 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Open an issue unless one is already open
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: sh
+        run: |
+          open=$(gh issue list --label ci-red --state open --json number -q length)
+          if [ "$open" = "0" ]; then
+            gh issue create \
+              --title "main is red" \
+              --label "ci-red,state:ready" \
+              --body "The full run on main failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}. Fix it before merging anything else."
+          else
+            echo "A ci-red issue is already open; not opening another."
+          fi
