@@ -272,5 +272,21 @@ eq "workflow change counts as setup" ".github/workflows/ci.yml" "$(setup_check_r
 eq "crlf found" "yes" "$(has_crlf "$(printf 'a\r\nb')")"
 eq "lf only" "" "$(has_crlf "$(printf 'a\nb')")"
 
+printf '\n# owner console (node)\n'
+if command -v node >/dev/null 2>&1; then
+  if node --test --test-reporter tap "$root"/console/test/*.test.js >"$root/tests/console.log" 2>&1; then
+    node_count=$(sed -n 's/^# pass \([0-9]*\).*/\1/p' "$root/tests/console.log" | tr -d '\r')
+    pass=$((pass + ${node_count:-0}))
+    printf 'ok    %s console tests\n' "${node_count:-0}"
+  else
+    fail=$((fail + 1))
+    printf 'FAIL  console tests, see tests/console.log\n'
+    grep -E '^not ok|^# (fail|pass)' "$root/tests/console.log"
+  fi
+  mv "$root/tests/console.log" "$root/tests/console.log.last"
+else
+  printf 'skip  node is not installed, so the console tests did not run\n'
+fi
+
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

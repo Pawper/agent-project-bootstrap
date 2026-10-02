@@ -1,0 +1,156 @@
+{
+  "project": "PROJECT_NAME",
+  "app": [
+    { "id": "web", "name": "Web app" },
+    { "id": "worker", "name": "Background worker" },
+    { "id": "admin", "name": "Admin" }
+  ],
+  "todo": [
+    { "id": "database", "title": "Connect the database", "how": "Create the database and put its address in the environment.", "link": "SETUP.md", "done_when": { "system": "database" } },
+    { "id": "storage", "title": "Connect object storage", "how": "Create the bucket and set its name and keys.", "link": "SETUP.md", "done_when": { "system": "storage" } },
+    { "id": "email", "title": "Connect email sending", "how": "Verify the sending domain and set the key.", "link": "SETUP.md", "done_when": { "system": "email" } },
+    { "id": "runners", "title": "Set up the CI runners and a hosted fallback", "how": "Register the runners, put them in a group with a hosted fallback, then set the done flag.", "link": ".github/workflows/ci.yml", "done_when": { "flag": "DONE_RUNNERS" } },
+    { "id": "signing-key", "title": "Create the signing key", "how": "Generate the key, store it in the password manager, set it in the environment.", "link": "SETUP.md", "done_when": { "settings": ["SESSION_SIGNING_KEY"] } },
+    { "id": "backup", "title": "Schedule the backup", "how": "Turn on the nightly backup and set the done flag once the first one has run.", "link": "SETUP.md", "done_when": { "flag": "DONE_BACKUP" } },
+    { "id": "bot-checks", "title": "Turn on bot checks for the forms", "how": "Add the site and secret keys, then set the done flag after a form has been tested.", "link": "SETUP.md", "done_when": { "flag": "DONE_BOT_CHECKS" } },
+    { "id": "branch-protection", "title": "Set branch protection on main", "how": "Require only the CI passed check, leave up to date off, require a pull request, then set the done flag.", "link": "CLAUDE.md", "done_when": { "flag": "DONE_BRANCH_PROTECTION" } }
+  ],
+  "systems": [
+    {
+      "id": "hosting", "name": "Hosting", "vendor": "Fly.io",
+      "does": "Runs the web app and the background worker.",
+      "settings": [{ "name": "FLY_APP_NAME", "label": "the app name on the host" }],
+      "optional": [{ "name": "FLY_REGION", "label": "the region" }],
+      "links": [{ "label": "Dashboard", "url": "https://fly.io/dashboard" }],
+      "flows": [{ "from": "browser", "label": "pages" }]
+    },
+    {
+      "id": "database", "name": "Database", "vendor": "Postgres on Neon",
+      "does": "Holds every account, item and record.",
+      "settings": [{ "name": "DATABASE_URL", "label": "the database address" }],
+      "links": [{ "label": "Console", "url": "https://console.neon.tech" }],
+      "flows": [{ "from": "web", "label": "reads and writes" }, { "from": "worker", "label": "jobs" }]
+    },
+    {
+      "id": "storage", "name": "Object storage", "vendor": "Cloudflare R2",
+      "does": "Keeps uploaded files and generated images.",
+      "settings": [
+        { "name": "STORAGE_BUCKET", "label": "the bucket name" },
+        { "name": "STORAGE_ACCESS_KEY", "label": "the storage access key" },
+        { "name": "STORAGE_SECRET_KEY", "label": "the storage secret key" }
+      ],
+      "links": [{ "label": "Buckets", "url": "https://dash.cloudflare.com" }],
+      "flows": [{ "from": "web", "label": "uploads" }]
+    },
+    {
+      "id": "email", "name": "Email", "vendor": "Postmark",
+      "does": "Sends sign-in links, receipts and notices.",
+      "settings": [{ "name": "EMAIL_API_KEY", "label": "the email sending key" }],
+      "optional": [{ "name": "EMAIL_FROM", "label": "the sender address" }],
+      "links": [{ "label": "Dashboard", "url": "https://account.postmarkapp.com" }],
+      "flows": [{ "from": "worker", "label": "messages" }]
+    },
+    {
+      "id": "sign-in", "name": "Sign-in", "vendor": "Built in, with Google as an option",
+      "does": "Lets people sign in with a magic link or their Google account.",
+      "settings": [{ "name": "SESSION_SIGNING_KEY", "label": "the session signing key" }],
+      "optional": [
+        { "name": "GOOGLE_CLIENT_ID", "label": "the Google sign-in id" },
+        { "name": "GOOGLE_CLIENT_SECRET", "label": "the Google sign-in secret" }
+      ],
+      "links": [{ "label": "Google console", "url": "https://console.cloud.google.com/apis/credentials" }],
+      "flows": [{ "from": "browser", "label": "sign-in" }]
+    },
+    {
+      "id": "payments", "name": "Payments", "vendor": "Stripe",
+      "does": "Takes payments and sends the events the app acts on.",
+      "settings": [
+        { "name": "STRIPE_SECRET_KEY", "label": "the payments secret key" },
+        { "name": "STRIPE_WEBHOOK_SECRET", "label": "the payments event secret" }
+      ],
+      "links": [{ "label": "Dashboard", "url": "https://dashboard.stripe.com" }],
+      "flows": [{ "from": "web", "label": "checkout" }]
+    },
+    {
+      "id": "ads", "name": "Ads", "vendor": "Google AdSense",
+      "does": "Shows ads on public pages.",
+      "settings": [{ "name": "ADS_CLIENT_ID", "label": "the ads client id" }],
+      "links": [{ "label": "AdSense", "url": "https://www.google.com/adsense" }],
+      "flows": [{ "from": "browser", "label": "ad units" }]
+    },
+    {
+      "id": "dns", "name": "DNS and domain", "vendor": "Cloudflare",
+      "does": "Points the domain at the host and holds the email records.",
+      "settings": [{ "name": "PUBLIC_DOMAIN", "label": "the public domain" }],
+      "links": [{ "label": "DNS", "url": "https://dash.cloudflare.com" }],
+      "flows": [{ "from": "browser", "label": "lookups" }]
+    },
+    {
+      "id": "media", "name": "Relay and media", "vendor": "Cloudflare",
+      "does": "Serves images through the cache and relays large files.",
+      "parts": [
+        { "name": "Image cache", "does": "Resizes and caches images.", "settings": [{ "name": "MEDIA_CACHE_ZONE", "label": "the image cache zone" }] },
+        { "name": "Relay", "does": "Streams large files without holding them.", "settings": [{ "name": "MEDIA_RELAY_URL", "label": "the relay address" }] }
+      ],
+      "links": [{ "label": "Zone", "url": "https://dash.cloudflare.com" }],
+      "flows": [{ "from": "browser", "label": "images" }]
+    },
+    {
+      "id": "bot-checks", "name": "Bot checks", "vendor": "Cloudflare Turnstile",
+      "does": "Tells a person from a machine on the public forms.",
+      "settings": [
+        { "name": "TURNSTILE_SITE_KEY", "label": "the bot check site key" },
+        { "name": "TURNSTILE_SECRET_KEY", "label": "the bot check secret key" }
+      ],
+      "links": [{ "label": "Turnstile", "url": "https://dash.cloudflare.com" }],
+      "flows": [{ "from": "web", "label": "form checks" }]
+    },
+    {
+      "id": "backups", "name": "Backups", "vendor": "Nightly dump to a second bucket",
+      "does": "Copies the database and the files off-site every night.",
+      "settings": [{ "name": "BACKUP_BUCKET", "label": "the backup bucket" }],
+      "links": [{ "label": "Backup bucket", "url": "https://dash.cloudflare.com" }],
+      "flows": [{ "from": "worker", "label": "nightly copy" }]
+    },
+    {
+      "id": "source", "name": "Source control and CI", "vendor": "GitHub and GitHub Actions",
+      "does": "Holds the code, runs the checks, and merges the queue.",
+      "settings": [{ "name": "GITHUB_REPOSITORY", "label": "the repository name" }],
+      "links": [
+        { "label": "Repository", "url": "https://github.com/OWNER/REPO" },
+        { "label": "Actions", "url": "https://github.com/OWNER/REPO/actions" },
+        { "label": "The CI workflow", "url": ".github/workflows/ci.yml" }
+      ],
+      "flows": [{ "from": "worker", "label": "deploys" }]
+    }
+  ],
+  "faq": {
+    "how": [
+      { "id": "merge-queue", "q": "Run the merge queue on a fresh machine?", "a": "Sign in to GitHub with the CLI, then run the merge queue script with the pull request number. It merges a green pull request without a re-run when main moved only outside its classes, and updates the branch otherwise.", "link": "scripts/ci/merge-queue.sh", "link_label": "The script" },
+      { "id": "stage-upload", "q": "Stage and upload a batch of files?", "a": "Put the files in the staging folder and run the upload script. It copies them to object storage and records each upload in the bucket's log, which is the only record kept.", "built": false, "link": "SETUP.md", "link_label": "Setup" },
+      { "id": "importer", "q": "Run the importer?", "a": "Put one seed file per unit in the seed folder, open a pull request, and run the importer after it merges. The importer reads the folder and writes to the database through the app.", "built": false, "link": "SETUP.md", "link_label": "Setup" },
+      { "id": "service-key", "q": "Add a service key?", "a": "Create the key in the service's dashboard, store it in the password manager under the project's entry, set it in the environment, and add a line to the setup document. The card for that service turns ready on its own.", "link": "SETUP.md", "link_label": "Setup" },
+      { "id": "signing-key", "q": "Renew the signing key?", "a": "Generate a new key, set it alongside the old one for a day so open sessions keep working, then remove the old one. Record the date in the setup document.", "built": false, "link": "SETUP.md", "link_label": "Setup" },
+      { "id": "backup", "q": "Back up by hand?", "a": "Run the nightly backup job from the Actions tab with the manual trigger. It writes a dated dump to the backup bucket.", "built": false, "link": ".github/workflows/ci.yml", "link_label": "Workflows" },
+      { "id": "old-files", "q": "Delete old files?", "a": "Nothing in this project deletes. Move files to the archive folder in storage; a nightly job moves anything older than a year there on its own.", "built": false, "link": "SETUP.md", "link_label": "Setup" },
+      { "id": "claim", "q": "Confirm a claim on an item?", "a": "Open the item in the admin, check the proof the claimant sent against the record, and press confirm. The claimant gets an email and the item shows them as the holder.", "built": false, "link": "SETUP.md", "link_label": "Setup" },
+      { "id": "report", "q": "Answer a report?", "a": "Reports arrive as issues labeled report. Reply on the issue, change what needs changing in a pull request, and close the issue; the reporter gets the reply by email.", "link": "https://github.com/OWNER/REPO/issues", "link_label": "Issues" }
+    ],
+    "when": [
+      { "id": "machine-form", "q": "A form is sent by a machine?", "a": "The bot check rejects it before the app sees it and the sender gets a plain message asking them to try again. Nothing is stored.", "link": "#bot-checks", "link_label": "Bot checks" },
+      { "id": "crawler-images", "q": "A crawler asks for images?", "a": "The image cache serves them without touching the app. Known crawlers are rate limited at the edge; the originals are never served directly.", "link": "#media", "link_label": "Relay and media" },
+      { "id": "payment-fails", "q": "A payment fails?", "a": "The payment provider retries on its own schedule and sends an event each time. The app marks the account as past due after the last retry and emails the person a link to update their card.", "built": false, "link": "#payments", "link_label": "Payments" },
+      { "id": "storage-near-plan", "q": "Storage nears the plan limit?", "a": "The provider emails the owner at eighty percent. The nightly audit comments on the tracking issue when the bucket passes ninety percent.", "built": false, "link": "#storage", "link_label": "Object storage" },
+      { "id": "runners-offline", "q": "The runners are offline?", "a": "Jobs fall through to the hosted runner in the same group, more slowly. Nothing waits forever; a job that cannot start in an hour fails and the merge queue tries again later.", "link": "#source", "link_label": "Source control and CI" },
+      { "id": "main-red", "q": "Main goes red?", "a": "The full run opens an issue labeled ci-red. Nothing else merges until it is closed. The nightly audit keeps mentioning it while it is open.", "link": ".github/workflows/ci.yml", "link_label": "The CI workflow" },
+      { "id": "removal", "q": "A holder asks for removal?", "a": "Confirm who they are the same way as a claim, then move the item aside in the admin. It leaves public view at once and stays in the archive, which is never deleted.", "built": false, "link": "SETUP.md", "link_label": "Setup" }
+    ]
+  },
+  "numbers": {
+    "items": [
+      { "key": "accounts", "label": "Accounts" },
+      { "key": "items", "label": "Items" },
+      { "key": "storage_used", "label": "Storage used" }
+    ]
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "agent-project-bootstrap",
+  "version": "0.1.0",
+  "description": "A Claude Code plugin for projects where many coding agents work at once, with an owner console that answers what systems the project talks to, what state each is in, and how to do the routine things.",
+  "license": "MIT",
+  "repository": "github:Pawper/agent-project-bootstrap",
+  "bin": {
+    "agent-project-bootstrap": "console/cli.js"
+  },
+  "exports": {
+    "./console": "./console/index.js"
+  },
+  "files": [
+    "console",
+    "hooks",
+    "skills",
+    "templates",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}
