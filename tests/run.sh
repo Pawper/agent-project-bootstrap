@@ -114,6 +114,28 @@ eq "--web opens the form, which requires it" "" "$(state_label_reason 'gh issue 
 eq "gh issue list is fine" "" "$(state_label_reason 'gh issue list')"
 eq "create in a later command" "gh issue create" "$(state_label_reason 'git push && gh issue create -t x')"
 
+printf '\n# task_tier and agent_model_reason\n'
+eq "Explore is a lookup" "lookup" "$(task_tier Explore 'Find config' 'Find where the port is set')"
+eq "Plan is hard" "hard" "$(task_tier Plan 'Plan it' 'Plan the cache')"
+eq "a short find is a lookup" "lookup" "$(task_tier general-purpose 'Find the parser' 'Find which file parses dates and report the path')"
+eq "implement is hard" "hard" "$(task_tier general-purpose 'Add retries' 'Implement retries in the client')"
+eq "a long find is routine" "routine" "$(task_tier general-purpose 'Survey' "$(awk 'BEGIN { for (i = 0; i < 130; i++) printf "find word "; }')")"
+eq "a summary is routine" "routine" "$(task_tier general-purpose 'Summarize' 'Summarize the release notes in five lines')"
+eq "no model on a lookup" "haiku lookup" "$(agent_model_reason Explore 'Find x' 'Find x' '')"
+eq "no model on hard work" "opus hard" "$(agent_model_reason general-purpose 'Fix the bug' 'Debug the crash' '')"
+eq "opus on a lookup is heavier than needed" "haiku lookup" "$(agent_model_reason Explore 'Find x' 'Find x' opus)"
+eq "fable on routine work is heavier than needed" "sonnet routine" "$(agent_model_reason general-purpose 'Summarize' 'Summarize the notes' fable)"
+eq "haiku on a lookup is fine" "" "$(agent_model_reason Explore 'Find x' 'Find x' haiku)"
+eq "sonnet on routine is fine" "" "$(agent_model_reason general-purpose 'Summarize' 'Summarize the notes' sonnet)"
+eq "a lighter model is always fine" "" "$(agent_model_reason general-purpose 'Fix it' 'Debug the crash' haiku)"
+eq "opus on hard work is fine" "" "$(agent_model_reason Plan 'Plan it' 'Plan the cache' opus)"
+eq "model ranks" "1 2 3 4 0" "$(printf '%s %s %s %s %s' "$(model_rank haiku)" "$(model_rank claude-sonnet-5-5)" "$(model_rank Opus)" "$(model_rank fable)" "$(model_rank '')")"
+
+printf '\n# workflow_model_reason\n'
+eq "every call has a model" "" "$(workflow_model_reason 'await agent("a", {model: "haiku"}); await agent("b", { model : "sonnet" })')"
+eq "one call without a model" "1" "$(workflow_model_reason 'await agent("a", {model: "haiku"}); await agent("b", {label: "x"})')"
+eq "no agents, nothing" "" "$(workflow_model_reason 'return 1')"
+
 printf '\n# status page\n'
 fixtures=$(mktemp -d)
 mkdir -p "$fixtures/stubs"

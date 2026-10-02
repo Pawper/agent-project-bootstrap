@@ -39,6 +39,7 @@ Many agents work here at once. Each kind of thing has one home, every rule has s
 | Nothing appended to a generated page | The `block-generated-page` hook refuses direct edits to the pages in `.claude/generated-pages.txt`; `sh status/check.sh` fails in CI when `STATUS.md` is stale |
 | Every issue has a State | The issue template requires it; the `require-state-label` hook refuses `gh issue create` without `--label state:...`; the `state-label` workflow keeps the label in step with the field; `sh scripts/state.sh` sets it on the board |
 | A red main is seen | The `full` CI job opens an issue labeled `ci-red` when it fails |
+| No usage wasted on dispatch | The `require-agent-model` hook refuses an agent or workflow dispatch without a model that fits the task |
 | Nothing drifts quietly | The nightly `audit` workflow comments on the issue labeled `audit` when an issue has no State or a merged PR left one stale, and says nothing when clean |
 
 The hooks come from the `project-bootstrap` plugin. If a hook refuses a command, do what its message says; do not look for a way around it.

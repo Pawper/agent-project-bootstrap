@@ -18,7 +18,7 @@ This repository holds the skill that walks through those decisions, the hooks th
 | Piece | Where | What it does |
 |---|---|---|
 | The skill | `skills/project-bootstrap/SKILL.md` | The design: homes, rules, enforcement, CI from day one, and the outputs in order |
-| The hooks | `hooks/hooks.json`, `hooks/scripts/` | Five PreToolUse hooks that block the dangerous commands |
+| The hooks | `hooks/hooks.json`, `hooks/scripts/` | Six PreToolUse hooks that block the dangerous commands and the wasteful dispatches |
 | The templates | `templates/` | Issue template, CLAUDE.md and AGENTS.md, setup and notice skeletons, the status page and its scripts, the CI workflow, the merge queue, the board setup, the nightly audit |
 | The tests | `tests/run.sh` | One test per pure function in every script |
 
@@ -88,6 +88,8 @@ Every hook reads the tool call before it runs, and when it refuses, it prints on
 **Direct edits to generated pages.** An `Edit`, `Write` or `MultiEdit` whose path matches a line in the project's `.claude/generated-pages.txt`. When that file is absent the list is just `STATUS.md`. A generated page is built from stubs; a hand edit is lost on the next build and is the shared file every agent would otherwise append to. The hook points at the stub and the build script.
 
 **Issues without a State.** `gh issue create` with no `--label state:...`. The board and the nightly audit can only be trusted if every issue carries its state from the moment it is filed, and filing is the moment the agent already knows it. `gh issue create --web` is allowed because the issue form requires the field itself.
+
+**Agents dispatched without a fitting model.** An `Agent` call with no `model`, or with a model heavier than its task needs, and a `Workflow` script with an `agent()` call that sets no model. Thirty agents each fanning out subagents on the heaviest model is the fastest way to spend a usage budget on lookups. The hook sorts the task by its type, description and prompt into a lookup (haiku), routine work (sonnet) or hard work (opus), and refuses when the model is missing or heavier than that. A lighter model than suggested is always allowed. Agents inherit the session's effort level and there is no per-agent effort setting, so the message reports the current effort and says to lower it before a long lookup.
 
 Sample of what a refusal looks like, from the delete hook:
 
@@ -175,7 +177,7 @@ ok    no overlap merges
 ok    overlap reruns
 ok    ci on main reruns
 
-108 passed, 0 failed
+126 passed, 0 failed
 ```
 
 ## License
