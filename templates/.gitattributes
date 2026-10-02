@@ -1,0 +1,9 @@
+# Keep every text file on LF so diffs never fight over line endings and
+# shell scripts run under Git Bash on Windows. The line-endings CI check
+# catches anything that slips past this.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.pdf binary

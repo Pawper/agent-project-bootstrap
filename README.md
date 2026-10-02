@@ -13,6 +13,21 @@ The fix is to decide two things before the first feature agent runs:
 
 This repository holds the skill that walks through those decisions, the hooks that enforce the rules, and templates for every file the skill creates.
 
+## The stack it was built for, and yours
+
+The plugin has a preferred stack: GitHub for issues, the project board and Actions, the `gh` CLI in its scripts, Claude Code for the hooks, and a plain Markdown spec folder per feature. It is honest about that. When a project uses something else, the skill says so once and then adapts: every home and every rule is about a kind of place, not a product, so the agent proposes the nearest equivalent and keeps the rule.
+
+| Preferred | If you use | The agent proposes |
+|---|---|---|
+| GitHub issues, one per task | GitLab, Jira, Linear, a plain tracker | Their issue with a required State field or label; the PR or MR still closes it |
+| GitHub project board with a State field | GitLab boards, Jira board, Linear views | A board grouped by State fed by the tracker's own automation, never a hand-kept page |
+| GitHub Actions | GitLab CI, Buildkite, Jenkins, CircleCI | The same jobs: classify, per-class, one summary check, full run on main, red run opens an issue |
+| `gh` in scripts | `glab`, a REST call, the tracker's CLI | The same scripts with the calls swapped; the pure parts are tool-free and tested |
+| Claude Code hooks | Another agent runtime | That runtime's pre-command hook if it has one; otherwise a CI check or a git hook, and the agent says the rule is weaker |
+| Spec folder per feature, by hand or with GitHub's spec-kit | Any spec tool, or none | A folder per feature with a constitution and a spec file; the CI check holds either way |
+
+What never changes: one home per kind of thing, nothing appended to a shared page, every rule has something that enforces it, and the full suite gates main rather than the PR.
+
 ## What is in the box
 
 | Piece | Where | What it does |
@@ -124,14 +139,27 @@ All of them live in `templates/` and are meant to be copied into the project roo
 - `status/`: one stub per feature in `stubs/`, a `services.txt`, and `lib.sh`, `build.sh` and `check.sh`. The build writes `STATUS.md`; the check fails when the page does not match the stubs, and CI runs it on every PR.
 - `specs/constitution.md` and `specs/FEATURE/spec.md`: the rules every spec obeys, written once, and the skeleton for one feature's spec. One folder per feature, so two PRs never edit the same spec file.
 - `scripts/ci/spec-check.sh`: fails a PR that changes `src/` without a change in a feature's spec folder. The constitution does not count, so nobody pokes it to satisfy the check. More than one spec folder in a PR is a warning that the task was too big, not a failure.
+- `scripts/ci/setup-check.sh` and `setup-paths.txt`: fails a PR that changes a setup file (migrations, the example env file, the container files, the workflows, the dependency manifests) without a change to `SETUP.md`.
+- `scripts/ci/line-endings.sh` and `.gitattributes`: the attributes file forces LF everywhere; the check fails on any tracked text file that still has CRLF.
 - `scripts/ci/classes.txt`: which paths belong to which change class.
 - `scripts/ci/classify.sh`: prints the classes for a diff.
 - `scripts/ci/merge-queue.sh PR`: merges a green PR without a re-run when main moved only outside the PR's classes, or updates the branch so CI runs again when it moved inside them. Turn off "require branches to be up to date" in branch protection; this script is the queue.
-- `.github/workflows/ci.yml`: a classify job, one job per class that runs only when its class changed, a status page check on every run, a single summary job named `CI passed` that waits for whichever class jobs ran and reports once, the full suite on every push to main, and an issue labeled `ci-red` when that full run fails. No path filters on the workflow, so every update to a PR starts a run.
+- `.github/workflows/ci.yml`: a classify job, one job per class that runs only when its class changed, the spec, setup and line-endings checks, a status page check on every run, a single summary job named `CI passed` that waits for whichever class jobs ran and reports once, the full suite on every push to main, and an issue labeled `ci-red` when that full run fails. No path filters on the workflow, so every update to a PR starts a run.
 - `scripts/labels.sh`: creates the seven `state:` labels plus `task`, `ci-red` and `audit`.
 - `scripts/board.sh OWNER OWNER/REPO`: creates the labels, the project board and its State field, and links the repository.
 - `scripts/state.sh PROJECT OWNER ISSUE "Ready"`: sets the State field on the board for one issue, so the coordinator can do it right after filing.
-- `.github/workflows/audit.yml`: nightly, comments on the issue labeled `audit` only when an open issue has no State label or a merged PR left its issue open and still ready. Says nothing when clean.
+- `.github/workflows/audit.yml`: nightly, comments on the issue labeled `audit` only when an open issue has no State label, a merged PR left its issue open and still ready, or a red-main issue is still open. Says nothing when clean.
+
+## What the plugin does not do
+
+The skill names four things the plugin leaves to the project, because they depend on where it is hosted:
+
+- **The work folder outside the repo** with a research register and an off-site backup. It is outside the repo by design, so no template can create it. Make it by hand and name its path in CLAUDE.md.
+- **Sharding the slow suite.** The app job has a comment showing where the matrix goes and the two common shard flags. The split itself depends on the runner.
+- **A fallback runner** when self-hosted ones are offline. The full job has a comment on runner groups. Setting one up is a hosting decision.
+- **A watcher on long-running work** that re-arms until it ends. The merge queue script runs once and exits. Run it from a scheduled workflow or a loop in the coordinator's session; the plugin does not start one for you.
+
+Two rules in the skill have no mechanical check anywhere: "report what was not done and which commands were refused" and "stop every shell when done." CLAUDE.md says so, and a reviewer looks for them.
 
 ## Branch protection on main
 
@@ -192,7 +220,7 @@ ok    no overlap merges
 ok    overlap reruns
 ok    ci on main reruns
 
-132 passed, 0 failed
+140 passed, 0 failed
 ```
 
 ## License

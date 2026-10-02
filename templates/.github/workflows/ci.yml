@@ -45,7 +45,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build and run the tests for this class
-        run: echo "replace with the build and the app tests, sharded if slow"
+        # When this gets slow, shard it: add "strategy: matrix: shard: [1, 2, 3, 4]"
+        # to this job and pass the shard to the runner, for example
+        # "pytest --splits 4 --group ${{ matrix.shard }}" or "vitest --shard=N/4".
+        run: echo "replace with the build and the app tests"
 
   data:
     needs: classify
@@ -78,6 +81,26 @@ jobs:
       - name: Fail when src/ changed without its spec
         run: sh scripts/ci/spec-check.sh "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}"
 
+  setup-check:
+    # A change to a setup file must come with a line in SETUP.md.
+    needs: classify
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fail when a setup file changed without SETUP.md
+        run: sh scripts/ci/setup-check.sh "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}"
+
+  line-endings:
+    # Runs on every PR and every push: mixed endings make every diff a conflict.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail when a text file has CRLF endings
+        run: sh scripts/ci/line-endings.sh
+
   status-page:
     # Runs on every PR and every push: the page must never go stale.
     runs-on: ubuntu-latest
@@ -93,7 +116,7 @@ jobs:
     # per-class jobs in branch protection: they are skipped when a change does
     # not need them, and a required check that never reports blocks the merge.
     name: CI passed
-    needs: [classify, app, data, docs, spec-check, status-page]
+    needs: [classify, app, data, docs, spec-check, setup-check, line-endings, status-page]
     if: always() && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
@@ -101,7 +124,7 @@ jobs:
         shell: sh
         run: |
           failed=0
-          for pair in "classify:${{ needs.classify.result }}" "app:${{ needs.app.result }}" "data:${{ needs.data.result }}" "docs:${{ needs.docs.result }}" "spec-check:${{ needs.spec-check.result }}" "status-page:${{ needs.status-page.result }}"; do
+          for pair in "classify:${{ needs.classify.result }}" "app:${{ needs.app.result }}" "data:${{ needs.data.result }}" "docs:${{ needs.docs.result }}" "spec-check:${{ needs.spec-check.result }}" "setup-check:${{ needs.setup-check.result }}" "line-endings:${{ needs.line-endings.result }}" "status-page:${{ needs.status-page.result }}"; do
             job=${pair%%:*}
             result=${pair#*:}
             echo "$job: $result"
@@ -112,6 +135,10 @@ jobs:
 
   full:
     # The gate on main after every merge. The whole suite, nothing skipped.
+    # With self-hosted runners, list them first and a hosted one last so a
+    # job still runs when they are offline: runs-on: [self-hosted, linux] is
+    # one label set; GitHub picks the first idle runner that matches, so use
+    # a runner group with a hosted fallback rather than a label alone.
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:

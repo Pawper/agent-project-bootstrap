@@ -38,7 +38,16 @@ Many agents work here at once. Each kind of thing has one home, every rule has s
 | Every issue has a State | The issue template requires it; the `require-state-label` hook refuses `gh issue create` without `--label state:...`; the `state-label` workflow keeps the label in step with the field; `sh scripts/state.sh` sets it on the board |
 | A red main is seen | The `full` CI job opens an issue labeled `ci-red` when it fails |
 | No usage wasted on dispatch | The `require-agent-model` hook refuses an agent or workflow dispatch without a model that fits the task |
-| Nothing drifts quietly | The nightly `audit` workflow comments on the issue labeled `audit` when an issue has no State or a merged PR left one stale, and says nothing when clean |
+| A setup change carries its line | The `setup-check` CI job fails a PR that changes a file in `scripts/ci/setup-paths.txt` without changing `SETUP.md` |
+| A source change carries its spec | The `spec-check` CI job fails a PR that changes `src/` without a change in a `specs/<feature>/` folder |
+| Line endings stay LF | `.gitattributes` forces it and the `line-endings` CI job fails on any CRLF file |
+| Nothing drifts quietly | The nightly `audit` workflow comments on the issue labeled `audit` when an issue has no State, a merged PR left one stale, or a red-main issue is still open, and says nothing when clean |
+
+Two rules have no mechanical check and are reviewed by hand: report what was not done and which commands were refused, and stop every shell when done.
+
+## Not on GitHub?
+
+These files were written for GitHub, Actions and `gh`. If this project uses something else, say so once, keep every rule, and swap the tool: the tracker's issue with a State field, its board grouped by State, its CI with the same jobs, its CLI in the scripts. The pure parts of every script are tool-free.
 
 The hooks come from the `project-bootstrap` plugin. If a hook refuses a command, do what its message says; do not look for a way around it.
 

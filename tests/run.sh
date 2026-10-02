@@ -252,6 +252,25 @@ eq "both, with a blank line between" "Open issues with no State label:
 
 Issues still open and labeled ready after their PR merged:
 - #4 (merged in #30)" "$(audit_comment '12' '30 4')"
+eq "red main comes first" "Main is red and the issue is still open:
+- #77
+
+Open issues with no State label:
+- #12" "$(audit_comment '12' '' '77')"
+eq "red only" "Main is red and the issue is still open:
+- #77" "$(audit_comment '' '' '77')"
+
+printf '\n# setup_check_reason and has_crlf\n'
+setup_pats=$(cat "$root/templates/scripts/ci/setup-paths.txt")
+eq "migration without SETUP.md" "migrations/0002_x.sql" "$(setup_check_reason 'src/a.ts
+migrations/0002_x.sql' "$setup_pats")"
+eq "migration with SETUP.md is fine" "" "$(setup_check_reason 'migrations/0002_x.sql
+SETUP.md' "$setup_pats")"
+eq "no setup file, nothing to check" "" "$(setup_check_reason 'src/a.ts
+docs/b.md' "$setup_pats")"
+eq "workflow change counts as setup" ".github/workflows/ci.yml" "$(setup_check_reason '.github/workflows/ci.yml' "$setup_pats")"
+eq "crlf found" "yes" "$(has_crlf "$(printf 'a\r\nb')")"
+eq "lf only" "" "$(has_crlf "$(printf 'a\nb')")"
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

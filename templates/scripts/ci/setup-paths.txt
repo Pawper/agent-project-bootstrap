@@ -1,0 +1,11 @@
+# Files whose change is a setup step. A PR that changes one of these must
+# also change SETUP.md. One shell glob per line; * matches a slash too.
+migrations/*
+.env.example
+Dockerfile
+docker-compose*
+.github/workflows/*
+package.json
+pyproject.toml
+go.mod
+Cargo.toml

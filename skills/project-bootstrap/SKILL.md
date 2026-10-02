@@ -9,6 +9,25 @@ The lesson this comes from: rules written for one agent become pathologies when 
 the codebase is the one surface every agent must write to, so anything that lives there is something they all
 collide on. Decide the homes and the enforcement first, then let agents build.
 
+## 0. The stack this was designed for, and adapting to another
+
+This skill and its plugin were built for GitHub (issues, a project board, Actions, the `gh` CLI), Claude Code
+hooks, and a spec folder per feature in plain Markdown. Be honest about that: say it once when the project uses
+something else, then adapt. Every home and every rule below is about a kind of place, not a product. When the
+project does not use the preferred tool, propose the nearest equivalent and keep the rule:
+
+| Preferred | If the project uses | Propose |
+|---|---|---|
+| GitHub issues, one per task | GitLab, Jira, Linear, a plain tracker | Their issue with a required State field or label; the PR or MR still closes it |
+| GitHub project board with a State field | GitLab boards, Jira board, Linear views | A board grouped by State fed by the tracker's own automation, never a hand-kept page |
+| GitHub Actions | GitLab CI, Buildkite, Jenkins, CircleCI | The same jobs: classify, per-class, one summary check, full run on main, red run opens an issue |
+| `gh` in scripts | `glab`, a REST call, the tracker's CLI | The same scripts with the calls swapped; keep the pure parts, which are tool-free |
+| Claude Code hooks | Another agent runtime | That runtime's pre-command hook if it has one; otherwise a CI check or a git hook, and say the rule is weaker |
+| Spec folder per feature, written by hand or with GitHub's spec-kit | Any spec tool, or none | A folder per feature in the repo with a constitution and a spec file; the CI check holds either way |
+
+What never changes: one home per kind of thing, nothing appended to a shared page, every rule has something that
+enforces it, and the full suite gates main rather than the PR.
+
 ## 1. Homes: one place for each kind of thing
 
 Write these into the project's CLAUDE.md (and AGENTS.md as a copy for other tools). Nothing goes anywhere else.
@@ -16,23 +35,24 @@ Write these into the project's CLAUDE.md (and AGENTS.md as a copy for other tool
 | Kind | Home | Never |
 |---|---|---|
 | Work, decisions, priorities | GitHub issues, one per task, filed before an agent starts; the PR closes it; decisions are comments on it | status files, TODO lists in the repo |
-| Status at a glance | The project board, fed by GitHub's own automation (issue opened adds a card, a linked PR moves it to In progress, merge moves it to Done) and a State label set at filing | a hand-kept status page |
+| Status at a glance | The project board, with a State field set at filing by the coordinator and moved to Done by GitHub's own automation when the PR merges or the issue closes | a hand-kept status page |
 | Orientation for an agent starting cold | One short status page in the repo (a table with one row per feature and its state, a services summary, a not-done list), generated from one small stub per feature and checked in CI | per-day or per-item diaries |
 | Data | The database, edited through the app's admin; seed files in the repo only as reviewable input to an importer, one file per unit so parallel changes touch different files | hand-written copies of data in prose |
 | Research and findings | A work folder beside the source material, outside the repo, backed up off-site | the docs folder |
 | Coordination state (what merged when, what was uploaded) | git history, CI, the storage bucket | written down by hand |
 | The manual | One setup document: configuration, keys by name, migrations run | anything that changes per feature |
-| Design | A spec folder per feature, written with the spec kit before building | design notes in issues only |
+| Design | A spec folder per feature, with a constitution written once and a spec file per feature, written before building (by hand, or with GitHub's spec-kit if the project wants a generator) | design notes in issues only |
 | Credit for borrowed code or content | One short notice file, like any license notice | per-item narrative |
 
 ## 2. Rules for every agent
 
-- File the issue first. Work in an isolated worktree. Never force-push. Never delete; move aside.
-- A PR carries its feature's spec stub and a setup line when a setup step changes, and nothing appended to a shared page.
+- File the issue first, with a State. Work in an isolated worktree. Never force-push. Never delete; move aside.
+- A PR carries its feature's spec change and a setup line when a setup step changes, and nothing appended to a shared page.
 - Tests prove the change and run per file; the full suite is the gate on main, not on the PR.
 - Everything a person sees is calm and plain, never a developer note (no issue numbers, fields, migrations).
 - Report what was not done and why, not only what was. Say which commands were refused.
 - No wait loops; bounded commands; stop every shell when done.
+- Dispatch an agent with a model that fits its task: a light model for a lookup, a middle one for routine work, a heavy one only for hard work.
 
 ## 3. Enforcement: for every rule, what checks it
 
@@ -40,44 +60,50 @@ An instruction decays under load. For each rule, decide which of these makes it 
 first hour:
 
 - **A hook that blocks the dangerous command** (delete, force-push, full test sweep, a direct write to a shared
-  page) rather than asking the agent to avoid it.
-- **A CI check that fails on drift**: the data shape, the generated status page, the catalog-wide rules, the
-  line endings.
+  page, an issue without a State, an agent dispatched without a fitting model) rather than asking the agent to avoid it.
+- **A CI check that fails on drift**: the generated status page, a source change without its spec, a setup
+  change without its setup line, line endings, and, when the project has them, the data shape and the
+  catalog-wide rules.
 - **A required field at filing**, where the agent already has the information: an issue template with a State
-  label (waiting on owner, waiting on a service, parked, dated, ready), and a hook that refuses an issue without one.
-- **A scheduled audit that speaks only when something is wrong**: open issues with no state, PRs merged with a
-  stale label, a red main run; one comment on a tracking issue, nothing when clean.
+  field, matching labels, and a hook that refuses an issue without one.
+- **A scheduled audit that speaks only when something is wrong**: open issues with no State, issues left stale by
+  a merged PR, a red main run; one comment on a tracking issue, nothing when clean.
 - **A watcher on anything long-running** (a merge queue, an upload, a build), re-armed until it ends.
 
-If a rule has none of these, either give it one or accept that it will not hold.
+If a rule has none of these, either give it one or accept that it will not hold. Two rules in section 2 have no
+mechanical check: "report what was not done" and "stop every shell." Say so in CLAUDE.md and review for them.
 
 ## 4. CI and merging from day one
 
 - Classify a PR by the files it touches and run only what those touch; shard the slow suite across runners.
+- One summary check, `CI passed`, waits for whichever class jobs ran and reports once. Branch protection on main
+  requires exactly that check and never a per-class job, since those are skipped on purpose.
 - The full run is the gate on main after every merge; a red main opens an issue automatically.
-- The merge queue merges a green PR without a re-run when main changed only outside the PR's classes.
+- The merge queue merges a green PR without a re-run when main changed only outside the PR's classes. This
+  depends on "require branches to be up to date" staying off in branch protection.
 - No path filters that can skip a run on an update (a merge from main that touches only docs must still start one, or the queue waits forever).
 - A fallback runner when the self-hosted ones are offline.
 
-## 6. The project board, exactly
+## 5. The project board, exactly
 
 Create one GitHub project for the repository and set it up so nothing has to be updated by hand:
 
-- **A State field**, single select, with these values: Ready, In progress, Waiting on owner, Waiting on a service, Parked, Dated, After launch. Create it with `gh project field-create <number> --owner <owner> --name State --data-type SINGLE_SELECT --single-select-options "Ready,In progress,Waiting on owner,Waiting on a service,Parked,Dated,After launch"`. Matching labels (`state: ready` and so on) on the repository, for the filing hook.
-- **Built-in workflows**, in the project's Workflows tab (the API cannot switch them on, so this is a one-time click each): Auto-add to project with the filter `is:issue is:open` on the repository; Item closed, set Status to Done; Pull request merged, set Status to Done; Auto-add sub-issues to project. Leave Auto-archive off until the board is busy.
+- **A State field**, single select, with these seven values: Ready, In progress, Waiting on owner, Waiting on a service, Parked, Dated, After launch. Create it with `gh project field-create <number> --owner <owner> --name State --data-type SINGLE_SELECT --single-select-options "Ready,In progress,Waiting on owner,Waiting on a service,Parked,Dated,After launch"`. Matching labels on the repository, `state:ready` through `state:after-launch`, for the filing hook.
+- **Built-in workflows**, in the project's Workflows tab (the API cannot switch them on, so this is a one-time click each): Auto-add to project with the filter `is:issue is:open` on the repository; Item closed, set Status to Done; Pull request merged, set Status to Done; Auto-add sub-issues to project. Leave Auto-archive off until the board is busy. These act on the board's own Status field; nothing built in moves State.
 - **At filing**, the coordinator sets State on the new issue (`gh project item-edit` with the field and option ids from `gh project field-list`); the filing hook refuses an issue without a state label.
 - **The board view**: group by State. That view is the status report; nobody writes one.
-- **A nightly audit** (a scheduled workflow) lists open issues with no State or with a merged PR and a stale State, as one comment on a tracking issue, and says nothing when clean.
-## 5. Outputs of this skill
+- **A nightly audit** (a scheduled workflow) lists open issues with no State, issues still open and Ready after their PR merged, and an open red-main issue, as one comment on a tracking issue, and says nothing when clean.
+
+## 6. Outputs of this skill
 
 Create, in order:
-1. The repository with CLAUDE.md and AGENTS.md from section 1 and 2, short, pointing at the hooks and checks.
-2. The issue template with the State label; the project board set up exactly as section 6 says; the labels.
-3. The hooks (user or project settings): block delete, force-push, full sweeps, direct writes to generated pages, issue creation without a state label.
-4. The CI skeleton from section 4, with the classifier and the status-page check.
+1. The repository with CLAUDE.md and AGENTS.md from sections 1 and 2, short, pointing at the hooks and checks.
+2. The issue template with the State field; the project board set up exactly as section 5 says; the labels.
+3. The hooks, which the plugin provides: block delete, force-push, full sweeps, direct writes to generated pages, issue creation without a state label, agent dispatch without a fitting model.
+4. The CI skeleton from section 4: the classifier, the per-class jobs, the `CI passed` summary, the status-page, spec, setup-line and line-endings checks, the full run on main, the merge queue, the nightly audit. Then branch protection by hand.
 5. The setup document, the notice file, the one-screen status page and its build and check scripts.
 6. The work folder outside the repo, with a register for research and an off-site backup scheduled.
-7. The spec kit constitution, then the first spec.
+7. The constitution, then the first spec.
 
 Then the first feature agent runs.
 
@@ -88,9 +114,11 @@ are ready to copy from `${CLAUDE_PLUGIN_ROOT}/templates/`:
 
 - Step 1: `CLAUDE.md`, `AGENTS.md`, `.claude/generated-pages.txt`
 - Step 2: `.github/ISSUE_TEMPLATE/`, `.github/workflows/state-label.yml`, `scripts/labels.sh`, `scripts/board.sh`, `scripts/state.sh`
-- Step 4: `.github/workflows/ci.yml`, `scripts/ci/` (classes, classifier, merge queue), `.github/workflows/audit.yml`
+- Step 4: `.github/workflows/ci.yml`, `scripts/ci/` (classes, classifier, merge queue, spec, setup and line-endings checks), `.github/workflows/audit.yml`
 - Step 5: `SETUP.md`, `NOTICE.md`, `status/` and the `STATUS.md` it builds
+- Step 6: nothing in the plugin; it lives outside the repo, so create it by hand and name its path in CLAUDE.md
 - Step 7: `specs/constitution.md` and `specs/FEATURE/spec.md`, checked by `scripts/ci/spec-check.sh`
 
 Copy them into the new repository, replace every CAPITALIZED placeholder, run `sh scripts/board.sh OWNER OWNER/REPO`,
-switch on the board's built-in workflows by hand, and build the status page once with `sh status/build.sh`.
+switch on the board's built-in workflows and set branch protection by hand, and build the status page once with
+`sh status/build.sh`. When the project is not on GitHub, say so, use section 0, and keep the pure parts of the scripts.

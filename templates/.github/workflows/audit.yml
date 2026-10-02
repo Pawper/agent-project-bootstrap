@@ -1,7 +1,7 @@
 # Nightly audit. It speaks only when something is wrong: an open issue with
-# no State label, or a PR merged in the last day whose issue is still open
-# and still labeled ready. It leaves one comment on the tracking issue
-# labeled "audit" and says nothing when everything is clean.
+# no State label, a PR merged in the last day whose issue is still open and
+# still labeled ready, or a red-main issue nobody has closed. It leaves one
+# comment on the tracking issue labeled "audit" and says nothing when clean.
 name: Audit
 
 on:
@@ -44,7 +44,9 @@ jobs:
           done > stale.txt
           stale=$(cat stale.txt)
 
-          body=$(audit_comment "$missing" "$stale")
+          red=$(gh issue list --label ci-red --state open --limit 20 --json number --jq '.[].number')
+
+          body=$(audit_comment "$missing" "$stale" "$red")
           if [ -z "$body" ]; then
             echo "Clean. Nothing to say."
             exit 0

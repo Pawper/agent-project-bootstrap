@@ -89,6 +89,40 @@ spec_check_reason() {
   fi
 }
 
+# setup_check_reason PATHS SETUP_PATTERNS
+# PATHS is one changed path per line. SETUP_PATTERNS is one shell glob per
+# line naming the files whose change is a setup step. Print the first
+# changed path that matches a pattern when SETUP.md did not change with it.
+# Print nothing when SETUP.md changed too or nothing setup-shaped changed.
+setup_check_reason() {
+  set -f
+  sc_hit=
+  sc_setup=0
+  sc_paths=$(printf '%s\n' "$1" | tr -d '\r' | tr '\\' '/')
+  case "
+$sc_paths
+" in *"
+SETUP.md
+"*) sc_setup=1 ;; esac
+  [ "$sc_setup" = 0 ] || { set +f; return 0; }
+  sc_hit=$(printf '%s\n' "$sc_paths" | while IFS= read -r sc_p; do
+    [ -n "$sc_p" ] || continue
+    printf '%s\n' "$2" | tr -d '\r' | while IFS= read -r sc_pat; do
+      case "$sc_pat" in ''|'#'*) continue ;; esac
+      case "$sc_p" in $sc_pat) printf '%s\n' "$sc_p"; break ;; esac
+    done
+  done | head -n 1)
+  set +f
+  [ -n "$sc_hit" ] && printf '%s\n' "$sc_hit"
+  return 0
+}
+
+# has_crlf TEXT
+# Print "yes" when TEXT contains a carriage return, nothing otherwise.
+has_crlf() {
+  if printf '%s' "$1" | tr -d -c '\r' | grep -q .; then echo yes; fi
+}
+
 # issues_without_state LINES
 # Each line is "NUMBER label,label,...". Print the numbers whose labels
 # include no "state:" label, one per line.
@@ -114,19 +148,29 @@ issue_refs() {
     }'
 }
 
-# audit_comment MISSING STALE
+# audit_comment MISSING STALE [RED]
 # MISSING is issue numbers one per line; STALE is "PR ISSUE" pairs one per
-# line. Print the comment body, or nothing when both are empty.
+# line; RED is the numbers of open red-main issues, one per line. Print the
+# comment body, or nothing when all are empty.
 audit_comment() {
   ac_missing=$(printf '%s\n' "$1" | sed '/^[ \t]*$/d')
   ac_stale=$(printf '%s\n' "$2" | sed '/^[ \t]*$/d')
-  [ -n "$ac_missing" ] || [ -n "$ac_stale" ] || return 0
+  ac_red=$(printf '%s\n' "${3:-}" | sed '/^[ \t]*$/d')
+  [ -n "$ac_missing" ] || [ -n "$ac_stale" ] || [ -n "$ac_red" ] || return 0
+  ac_sep=""
+  if [ -n "$ac_red" ]; then
+    printf 'Main is red and the issue is still open:\n'
+    printf '%s\n' "$ac_red" | awk '{ printf "- #%s\n", $1 }'
+    ac_sep="\n"
+  fi
   if [ -n "$ac_missing" ]; then
+    printf "$ac_sep"
     printf 'Open issues with no State label:\n'
     printf '%s\n' "$ac_missing" | awk '{ printf "- #%s\n", $1 }'
+    ac_sep="\n"
   fi
   if [ -n "$ac_stale" ]; then
-    [ -n "$ac_missing" ] && printf '\n'
+    printf "$ac_sep"
     printf 'Issues still open and labeled ready after their PR merged:\n'
     printf '%s\n' "$ac_stale" | awk '{ printf "- #%s (merged in #%s)\n", $2, $1 }'
   fi
