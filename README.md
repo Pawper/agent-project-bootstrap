@@ -35,7 +35,8 @@ What never changes: one home per kind of thing, nothing appended to a shared pag
 | The skill | `skills/project-bootstrap/SKILL.md` | The design: homes, rules, enforcement, CI from day one, and the outputs in order |
 | The hooks | `hooks/hooks.json`, `hooks/scripts/` | Six PreToolUse hooks that block the dangerous commands and the wasteful dispatches |
 | The templates | `templates/` | Issue template, CLAUDE.md and AGENTS.md, setup and notice skeletons, the status page and its scripts, the CI workflow, the merge queue, the board setup, the nightly audit |
-| The tests | `tests/run.sh` | One test per pure function in every script |
+| The owner console | `console/`, sample in `templates/console/` | One page: what the project talks to, the state of each system, how to do the routine things |
+| The tests | `tests/run.sh` | One test per pure function in every script, plus the console's Node tests |
 
 ## Install
 
@@ -100,8 +101,9 @@ This is what a person does with the plugin, from install to the first feature ag
 4. **Two settings GitHub cannot script.** In the board's Workflows tab, switch on the four built-in workflows listed under The project board. In branch protection on main, require exactly one check, `CI passed`, and leave "require branches to be up to date" off, as described under Branch protection on main.
 5. **Build the status page once.** Run `sh status/build.sh` and commit STATUS.md. From here on CI fails any PR that leaves the page stale, and the hook refuses hand edits to it.
 6. **Write the constitution and the first spec.** Fill in `specs/constitution.md` once, then copy `specs/FEATURE/` to `specs/<feature>/` for the first feature. If you use spec kit, run it inside that folder; the templates are plain Markdown and do not depend on it. From here on CI fails any PR that changes `src/` without a change in a spec folder.
-7. **Day to day.** Each task starts as an issue with a State, filed from the template or with `gh issue create --label state:ready`, and the coordinator sets the board field with `scripts/state.sh`. Agents work in worktrees, run only the tests for the files they changed, and open PRs. CI runs only the classes a PR touches and reports once through `CI passed`. The merge queue script merges a green PR without a re-run when main moved outside its classes. The full suite runs on main after every merge and opens a `ci-red` issue when it fails. Every night the audit comments on the tracking issue only when an issue has no State or a merged PR left one stale.
-8. **When a hook refuses something.** The message says what was blocked and what to do instead; do that. A project that really needs an exception changes `.claude/generated-pages.txt` or disables the plugin for that repository. Nobody works around a hook.
+7. **Open the owner console.** Run `npx agent-project-bootstrap console` and open the page it names. Fill in `console/services.json` for the systems the project really talks to; the launch to-do shows what is left and clears on its own as settings land.
+8. **Day to day.** Each task starts as an issue with a State, filed from the template or with `gh issue create --label state:ready`, and the coordinator sets the board field with `scripts/state.sh`. Agents work in worktrees, run only the tests for the files they changed, and open PRs. CI runs only the classes a PR touches and reports once through `CI passed`. The merge queue script merges a green PR without a re-run when main moved outside its classes. The full suite runs on main after every merge and opens a `ci-red` issue when it fails. Every night the audit comments on the tracking issue only when an issue has no State or a merged PR left one stale.
+9. **When a hook refuses something.** The message says what was blocked and what to do instead; do that. A project that really needs an exception changes `.claude/generated-pages.txt` or disables the plugin for that repository. Nobody works around a hook.
 
 ## What each hook blocks and why
 
@@ -141,6 +143,7 @@ All of them live in `templates/` and are meant to be copied into the project roo
 - `scripts/ci/spec-check.sh`: fails a PR that changes `src/` without a change in a feature's spec folder. The constitution does not count, so nobody pokes it to satisfy the check. More than one spec folder in a PR is a warning that the task was too big, not a failure.
 - `scripts/ci/setup-check.sh` and `setup-paths.txt`: fails a PR that changes a setup file (migrations, the example env file, the container files, the workflows, the dependency manifests) without a change to `SETUP.md`.
 - `scripts/ci/line-endings.sh` and `.gitattributes`: the attributes file forces LF everywhere; the check fails on any tracked text file that still has CRLF.
+- `console/services.json` and `.env.example`: the one file that drives the owner console, and the example env file the console check reads it against.
 - `scripts/ci/classes.txt`: which paths belong to which change class.
 - `scripts/ci/classify.sh`: prints the classes for a diff.
 - `scripts/ci/merge-queue.sh PR`: merges a green PR without a re-run when main moved only outside the PR's classes, or updates the branch so CI runs again when it moved inside them. Turn off "require branches to be up to date" in branch protection; this script is the queue.
@@ -160,6 +163,49 @@ The skill names four things the plugin leaves to the project, because they depen
 - **A watcher on long-running work** that re-arms until it ends. The merge queue script runs once and exits. Run it from a scheduled workflow or a loop in the coordinator's session; the plugin does not start one for you.
 
 Two rules in the skill have no mechanical check anywhere: "report what was not done and which commands were refused" and "stop every shell when done." CLAUDE.md says so, and a reviewer looks for them.
+
+## The owner console
+
+The piece a spec kit does not give you: one page that answers "what systems does this project talk to, what state is each in, and how do I do the routine things." It is kept current from the project's configuration, never written by hand.
+
+![The owner console built from the sample configuration](docs/console.png)
+
+**Two mounts, one source.** By default it is a small side app on your machine:
+
+```bash
+npx agent-project-bootstrap console
+```
+
+That serves one page on localhost from the files in the current folder and nothing else. Until the package is on npm, the same command works straight from the repository:
+
+```bash
+npx github:Pawper/agent-project-bootstrap console
+```
+
+When the owner wants it online, the same page mounts as a route behind the project's own sign-in. The project passes a function that reads its admin API, and the live numbers appear:
+
+```js
+const { createConsole } = require('agent-project-bootstrap/console');
+const owner = createConsole({ root: __dirname, numbers: () => admin.counts() });
+app.get('/owner', requireOwner, owner.handler);
+```
+
+**Four parts, in this order.**
+
+1. **Launch to-do.** What stands between here and launch. Each item clears itself: from a setting that is now present, from a system that is now ready, or from a flag the owner sets when a step with no setting is done (runners, signing key, backup, bot checks, branch protection).
+2. **Services.** One card per outside system: hosting, database, storage, email, sign-in, payments, ads, DNS, relay and media, bot checks, backups, source control and CI. Each says what it does in one sentence, its state (ready, partly, to do) derived from which settings are present, a plain note saying what is still needed, and links into its dashboard. A card is a system, never a task or a feature; two things on one vendor fold into one card with a line each. Beside the cards, a map of the same systems with the browser and the app's own parts drawn dashed and labeled lines for what flows between them.
+3. **FAQ.** "How do I" for the routine owner tasks and "What happens when" for the limits and reporting paths. Every answer states the real behavior and links to the page, script or document that does it. Where something is not built, the answer says "not built yet" instead of inventing it.
+4. **Live numbers**, where the project has them, read through the project's admin API when mounted online. The local mount leaves them out and says so.
+
+**One file drives it:** `console/services.json`. It lists the systems, the settings each depends on with a plain label for each, the links, the to-do items and their flags, and the FAQ entries. An agent adding a service adds an entry and the page follows. Nothing a person sees names a variable: the card says "the database address is still needed," not the name of the setting.
+
+**Three checks hold it together**, run by the tests and by `npx agent-project-bootstrap console --check`:
+
+- Every name in `.env.example` has a card, a part or a to-do item. A setting with no card fails.
+- Every required question is present in the FAQ, all nine "How do I" and all seven "What happens when." A missing one fails, so a project cannot quietly drop the question it has no answer to.
+- Every link resolves: a web address parses, a section exists on the page, a file exists in the project.
+
+The sample configuration under `templates/console/` and the matching `templates/.env.example` are the fixture for the tests, so the sample stays valid as the code changes. The screenshot above was made from that sample with a few settings present.
 
 ## Branch protection on main
 

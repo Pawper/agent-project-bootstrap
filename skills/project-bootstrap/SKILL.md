@@ -126,6 +126,7 @@ Create, in order:
 5. The setup document, the notice file, the one-screen status page and its build and check scripts.
 6. The work folder outside the repo, with a register for research and an off-site backup scheduled.
 7. The constitution, then the first spec.
+8. The owner console: `console/services.json` listing every outside system, the settings each depends on with a plain label, the links, the launch to-do with its flags, and the FAQ; served locally with `npx agent-project-bootstrap console`, and mounted online behind the owner sign-in when wanted. Its check fails when a name in the example env file has no card.
 
 Then the first feature agent runs.
 
@@ -140,6 +141,7 @@ are ready to copy from `${CLAUDE_PLUGIN_ROOT}/templates/`:
 - Step 5: `SETUP.md`, `NOTICE.md`, `status/` and the `STATUS.md` it builds
 - Step 6: nothing in the plugin; it lives outside the repo, so create it by hand and name its path in CLAUDE.md
 - Step 7: `specs/constitution.md` and `specs/FEATURE/spec.md`, checked by `scripts/ci/spec-check.sh`
+- Step 8: `console/services.json` and `.env.example`; the page itself comes from the plugin's `console/` and needs no copy
 
 Copy them into the new repository, replace every CAPITALIZED placeholder, run `sh scripts/board.sh OWNER OWNER/REPO`,
 switch on the board's built-in workflows and set branch protection by hand, and build the status page once with
