@@ -1,11 +1,11 @@
 # Change classes for CI. Each line is a class name followed by the shell
 # globs that belong to it, separated by spaces. A path takes the class of the
-# first line it matches. A path that matches nothing is class "other", which
-# runs every job. In these globs * also matches a slash, so src/* covers the
-# whole tree under src.
+# first line it matches, so the narrow lines come before the broad ones. A
+# path that matches nothing is class "other", which runs every job. In these
+# globs * also matches a slash, so src/* covers the whole tree under src.
 ci     .github/* scripts/ci/*
-app    src/* package.json package-lock.json pyproject.toml go.mod Cargo.toml
-tests  tests/* test/*
-docs   docs/* *.md
-data   seed/* migrations/*
 status status/* STATUS.md
+data   seed/* migrations/*
+tests  tests/* test/*
+app    src/* package.json package-lock.json pyproject.toml go.mod Cargo.toml
+docs   docs/* *.md
