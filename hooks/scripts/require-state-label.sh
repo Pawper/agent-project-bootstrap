@@ -12,5 +12,5 @@ cmd=$(json_field "$input" command)
 hit=$(state_label_reason "$cmd")
 [ -n "$hit" ] || exit 0
 
-printf '%s\n' "Blocked \`$hit\` because every issue needs a State label at filing; add \`--label state:ready\` (or state:waiting-on-owner, state:waiting-on-service, state:parked, state:dated) and run it again." >&2
+printf '%s\n' "Blocked \`$hit\` because every issue needs a State label at filing; add \`--label state:ready\` (or state:in-progress, state:waiting-on-owner, state:waiting-on-service, state:parked, state:dated, state:after-launch) and run it again." >&2
 exit 2

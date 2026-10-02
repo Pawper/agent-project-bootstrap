@@ -11,13 +11,15 @@ body:
     id: state
     attributes:
       label: State
-      description: Where this task stands right now. A workflow turns this into the matching state label.
+      description: Where this task stands right now. The same seven values as the board's State field; a workflow turns this into the matching state label.
       options:
-        - ready
-        - waiting on owner
-        - waiting on a service
-        - parked
-        - dated
+        - Ready
+        - In progress
+        - Waiting on owner
+        - Waiting on a service
+        - Parked
+        - Dated
+        - After launch
     validations:
       required: true
   - type: textarea

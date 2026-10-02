@@ -1,0 +1,58 @@
+# Nightly audit. It speaks only when something is wrong: an open issue with
+# no State label, or a PR merged in the last day whose issue is still open
+# and still labeled ready. It leaves one comment on the tracking issue
+# labeled "audit" and says nothing when everything is clean.
+name: Audit
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Find issues without a State and issues left stale by a merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: sh
+        run: |
+          . scripts/ci/lib.sh
+
+          issues=$(gh issue list --state open --limit 500 --json number,labels \
+            --jq '.[] | "\(.number) \([.labels[].name] | join(","))"')
+          missing=$(issues_without_state "$issues")
+
+          since=$(date -u -d '1 day ago' +%Y-%m-%d 2>/dev/null || date -u -v-1d +%Y-%m-%d)
+          merged=$(gh pr list --state merged --search "merged:>=$since" --limit 100 --json number,body \
+            --jq '.[] | "\(.number) \(.body | gsub("\n"; " "))"')
+          stale=""
+          printf '%s\n' "$merged" | while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            pr=${line%% *}
+            for n in $(issue_refs "$line"); do
+              labels=$(gh issue view "$n" --json state,labels --jq 'select(.state == "OPEN") | [.labels[].name] | join(",")' 2>/dev/null || true)
+              case ",$labels," in *",state:ready,"*) printf '%s %s\n' "$pr" "$n" ;; esac
+            done
+          done > stale.txt
+          stale=$(cat stale.txt)
+
+          body=$(audit_comment "$missing" "$stale")
+          if [ -z "$body" ]; then
+            echo "Clean. Nothing to say."
+            exit 0
+          fi
+          tracking=$(gh issue list --label audit --state open --limit 1 --json number --jq '.[0].number')
+          if [ -z "$tracking" ]; then
+            tracking=$(gh issue create --title "Audit" --label "audit,state:parked" \
+              --body "The nightly audit comments here when something is wrong. It says nothing when all is clean." | sed 's#.*/##')
+          fi
+          gh issue comment "$tracking" --body "$body"
+          echo "Commented on issue $tracking."

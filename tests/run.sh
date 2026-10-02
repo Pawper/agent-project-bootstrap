@@ -185,13 +185,37 @@ waiting on owner
 Something."
 eq "reads the field" "state:waiting-on-owner" "$(state_label_from_body "$body")"
 eq "ready" "state:ready" "$(state_label_from_body '### State
-ready')"
+Ready')"
+eq "after launch" "state:after-launch" "$(state_label_from_body '### State
+After launch')"
 eq "no field, no label" "" "$(state_label_from_body '### Outcome
 x')"
 eq "empty response, no label" "" "$(state_label_from_body '### State
 
 _No response_')"
 eq "CRLF body" "state:parked" "$(state_label_from_body "$(printf '### State\r\n\r\nparked\r\n')")"
+
+printf '\n# audit helpers\n'
+eq "issues without a state label" "12
+15" "$(issues_without_state '12 bug,task
+14 state:ready,task
+15
+16 task,state:parked')"
+eq "issue refs, unique, in order" "4
+12" "$(issue_refs 'Closes #4 and fixes #12; see #4 again')"
+eq "no refs, nothing" "" "$(issue_refs 'no numbers here')"
+eq "clean audit says nothing" "" "$(audit_comment '' '')"
+eq "missing only" "Open issues with no State label:
+- #12
+- #15" "$(audit_comment '12
+15' '')"
+eq "stale only" "Issues still open and labeled ready after their PR merged:
+- #4 (merged in #30)" "$(audit_comment '' '30 4')"
+eq "both, with a blank line between" "Open issues with no State label:
+- #12
+
+Issues still open and labeled ready after their PR merged:
+- #4 (merged in #30)" "$(audit_comment '12' '30 4')"
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

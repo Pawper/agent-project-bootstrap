@@ -62,3 +62,46 @@ state_label_from_body() {
     /^### State[ \t]*$/ { found = 1 }
   '
 }
+
+# issues_without_state LINES
+# Each line is "NUMBER label,label,...". Print the numbers whose labels
+# include no "state:" label, one per line.
+issues_without_state() {
+  printf '%s\n' "$1" | tr -d '\r' | awk '
+    NF >= 1 {
+      labels = (NF >= 2) ? $2 : ""
+      if ("," labels "," !~ /,state:/) print $1
+    }'
+}
+
+# issue_refs TEXT
+# Print every issue number TEXT refers to as #N, one per line, unique.
+issue_refs() {
+  printf '%s\n' "$1" | tr -d '\r' | awk '
+    {
+      s = $0
+      while (match(s, /#[0-9]+/)) {
+        n = substr(s, RSTART + 1, RLENGTH - 1)
+        if (!(n in seen)) { seen[n] = 1; print n }
+        s = substr(s, RSTART + RLENGTH)
+      }
+    }'
+}
+
+# audit_comment MISSING STALE
+# MISSING is issue numbers one per line; STALE is "PR ISSUE" pairs one per
+# line. Print the comment body, or nothing when both are empty.
+audit_comment() {
+  ac_missing=$(printf '%s\n' "$1" | sed '/^[ \t]*$/d')
+  ac_stale=$(printf '%s\n' "$2" | sed '/^[ \t]*$/d')
+  [ -n "$ac_missing" ] || [ -n "$ac_stale" ] || return 0
+  if [ -n "$ac_missing" ]; then
+    printf 'Open issues with no State label:\n'
+    printf '%s\n' "$ac_missing" | awk '{ printf "- #%s\n", $1 }'
+  fi
+  if [ -n "$ac_stale" ]; then
+    [ -n "$ac_missing" ] && printf '\n'
+    printf 'Issues still open and labeled ready after their PR merged:\n'
+    printf '%s\n' "$ac_stale" | awk '{ printf "- #%s (merged in #%s)\n", $2, $1 }'
+  fi
+}
