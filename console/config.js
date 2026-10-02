@@ -36,8 +36,18 @@ const REQUIRED_FAQ = {
 
 function loadConfig(root) {
   const file = path.join(root, CONFIG_PATH);
-  const text = fs.readFileSync(file, 'utf8');
-  return normalize(JSON.parse(text));
+  if (!fs.existsSync(file)) {
+    const err = new Error(`There is no console configuration yet. Copy the sample from the plugin's templates/console/services.json to ${CONFIG_PATH} in this project and describe the systems it talks to.`);
+    err.code = 'NO_CONSOLE_CONFIG';
+    throw err;
+  }
+  let text;
+  try {
+    text = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (e) {
+    throw new Error(`The console configuration at ${CONFIG_PATH} is not valid JSON: ${e.message}`);
+  }
+  return normalize(text);
 }
 
 // Accept a setting written as a bare name or as {name, label}. A person only

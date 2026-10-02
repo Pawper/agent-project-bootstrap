@@ -134,6 +134,10 @@ test('the online mount says so when the numbers cannot be read', async () => {
   assert.match(html, /could not be read just now/);
 });
 
+test('a project with no config gets a plain sentence, not a path error', () => {
+  assert.throws(() => config.loadConfig(path.join(__dirname)), /no console configuration yet/);
+});
+
 test('the local mount leaves the numbers out and says so', async () => {
   const c = createConsole({ root, env: {} });
   const html = await c.html();

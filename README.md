@@ -105,6 +105,20 @@ This is what a person does with the plugin, from install to the first feature ag
 8. **Day to day.** Each task starts as an issue with a State, filed from the template or with `gh issue create --label state:ready`, and the coordinator sets the board field with `scripts/state.sh`. Agents work in worktrees, run only the tests for the files they changed, and open PRs. CI runs only the classes a PR touches and reports once through `CI passed`. The merge queue script merges a green PR without a re-run when main moved outside its classes. The full suite runs on main after every merge and opens a `ci-red` issue when it fails. Every night the audit comments on the tracking issue only when an issue has no State or a merged PR left one stale.
 9. **When a hook refuses something.** The message says what was blocked and what to do instead; do that. A project that really needs an exception changes `.claude/generated-pages.txt` or disables the plugin for that repository. Nobody works around a hook.
 
+## On an existing repository
+
+The same pieces, a different order, one pull request per step. The skill's section "On an existing project" has the full sequence; the short version:
+
+1. Survey, naming the pages that grow by appending and the hand-kept status page.
+2. Hooks on, with those pages in `.claude/generated-pages.txt`, so the next append is refused that day.
+3. Labels and the audit. The first night's comment is the backlog of issues with no State, not a failure.
+4. The status page, with one stub per existing feature mined from the old page, which is then moved aside.
+5. CI in this order: the summary job and the setup check, which fail nothing that passes today; the spec check, which is incremental; line endings last, as one normalizing commit made when no pull requests are open.
+6. The board: pass `--existing NUMBER` to `scripts/board.sh` so it adds the State field to the board you have instead of creating a second one.
+7. The console, from the example env file you already have. Its check names every setting with no card yet.
+
+Never overwrite. Where a template's file already exists, the skill writes the skeleton beside it as `NAME.bootstrap.md` and leaves the merge to a person.
+
 ## What each hook blocks and why
 
 Every hook reads the tool call before it runs, and when it refuses, it prints one plain sentence saying what it blocked and what to do instead. The scripts are POSIX shell with awk and nothing else, so they run under Git Bash on Windows and on macOS and Linux as they are.
@@ -149,7 +163,7 @@ All of them live in `templates/` and are meant to be copied into the project roo
 - `scripts/ci/merge-queue.sh PR`: merges a green PR without a re-run when main moved only outside the PR's classes, or updates the branch so CI runs again when it moved inside them. Turn off "require branches to be up to date" in branch protection; this script is the queue.
 - `.github/workflows/ci.yml`: a classify job, one job per class that runs only when its class changed, the spec, setup and line-endings checks, a status page check on every run, a single summary job named `CI passed` that waits for whichever class jobs ran and reports once, the full suite on every push to main, and an issue labeled `ci-red` when that full run fails. No path filters on the workflow, so every update to a PR starts a run.
 - `scripts/labels.sh`: creates the seven `state:` labels plus `task`, `ci-red` and `audit`.
-- `scripts/board.sh OWNER OWNER/REPO`: creates the labels, the project board and its State field, and links the repository.
+- `scripts/board.sh OWNER OWNER/REPO`: creates the labels, the project board and its State field, and links the repository. With `--existing NUMBER` it adopts the board you already have instead of creating one.
 - `scripts/state.sh PROJECT OWNER ISSUE "Ready"`: sets the State field on the board for one issue, so the coordinator can do it right after filing.
 - `.github/workflows/audit.yml`: nightly, comments on the issue labeled `audit` only when an open issue has no State label, a merged PR left its issue open and still ready, or a red-main issue is still open. Says nothing when clean.
 

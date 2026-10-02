@@ -130,6 +130,32 @@ Create, in order:
 
 Then the first feature agent runs.
 
+## On an existing project
+
+A repository with history, open pull requests and agents already at work gets the same pieces in a different
+order, one pull request per step, so nothing lands all at once and nothing working is replaced by a skeleton.
+
+1. **Survey first**, as above. Name the shared pages that grow by appending and the hand-kept status page; they
+   are the symptoms, and they become inputs below.
+2. **Hooks on, and the generated-pages list filled in** with the repository's real shared pages, so the next
+   append is refused the same day. Tell the team in one message what the six hooks refuse and what to do instead.
+3. **Labels and the audit.** The first night's comment will list every open issue with no State. That is the
+   backlog, not a failure; work it down over the week.
+4. **The status page, mined from what exists.** Write one stub per existing feature from the old status page,
+   build STATUS.md, then move the old page aside (`git mv`, never delete) and add it to the generated-pages list
+   if anything still points at it.
+5. **CI, in this order:** the summary job and the setup check first, since they fail nothing that passes today;
+   then the spec check, which is incremental by design (each feature gets its folder when it is next touched);
+   then line endings, which is one deliberate normalizing commit made when no pull requests are open, because
+   it conflicts with every branch that was cut before it.
+6. **The board.** If one exists, give its number to the board script instead of letting it create a second.
+7. **The console**, from the example env file the project already has; the check names every setting that
+   still has no card, which is the list of systems to describe.
+
+Never overwrite. For every template whose file already exists, write the skeleton beside it as
+`NAME.bootstrap.md` (or `.bootstrap.yml`, and so on) and leave the merge to a person. The templates are the
+shape; the existing file is the truth until someone says otherwise.
+
 ## Where the pieces are
 
 When this skill runs from the plugin, the hooks in step 3 are already active and the files for the other steps

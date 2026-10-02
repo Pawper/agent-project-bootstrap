@@ -60,6 +60,7 @@ async function main() {
     process.stdout.write('The console configuration is complete.\n');
     return;
   }
+  config.loadConfig(args.root);
   const { url } = await serve({ root: args.root, port: args.port });
   process.stdout.write(`Owner console for ${args.root}\n${url}\nPress Ctrl+C to stop.\n`);
 }
