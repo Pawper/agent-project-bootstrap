@@ -110,11 +110,19 @@ All of them live in `templates/` and are meant to be copied into the project roo
 - `scripts/ci/classes.txt`: which paths belong to which change class.
 - `scripts/ci/classify.sh`: prints the classes for a diff.
 - `scripts/ci/merge-queue.sh PR`: merges a green PR without a re-run when main moved only outside the PR's classes, or updates the branch so CI runs again when it moved inside them. Turn off "require branches to be up to date" in branch protection; this script is the queue.
-- `.github/workflows/ci.yml`: a classify job, one job per class that runs only when its class changed, a status page check on every run, the full suite on every push to main, and an issue labeled `ci-red` when that full run fails. No path filters on the workflow, so every update to a PR starts a run.
+- `.github/workflows/ci.yml`: a classify job, one job per class that runs only when its class changed, a status page check on every run, a single summary job named `CI passed` that waits for whichever class jobs ran and reports once, the full suite on every push to main, and an issue labeled `ci-red` when that full run fails. No path filters on the workflow, so every update to a PR starts a run.
 - `scripts/labels.sh`: creates the seven `state:` labels plus `task`, `ci-red` and `audit`.
 - `scripts/board.sh OWNER OWNER/REPO`: creates the labels, the project board and its State field, and links the repository.
 - `scripts/state.sh PROJECT OWNER ISSUE "Ready"`: sets the State field on the board for one issue, so the coordinator can do it right after filing.
 - `.github/workflows/audit.yml`: nightly, comments on the issue labeled `audit` only when an open issue has no State label or a merged PR left its issue open and still ready. Says nothing when clean.
+
+## Branch protection on main
+
+Branch protection is set by hand in the repository's settings, under Branches. GitHub asks the owner to confirm their access before it saves the rule. Set it like this:
+
+- **Require status checks to pass**, and require exactly one check: `CI passed`. Never add the per-class jobs. They are skipped on purpose when a change does not touch their class, and a required check that never reports blocks the merge forever. The `CI passed` job waits for whichever class jobs ran and reports once, so it is the only check main needs.
+- **Leave "require branches to be up to date" off.** The merge queue merges a green pull request without a re-run when main changed only outside the pull request's classes. That rule depends on being allowed to merge a branch that is behind main. With the setting on, every merge to main would force every open pull request to update and run again, which is the queue that waits an hour per change this plugin exists to avoid.
+- **Require a pull request before merging**, so the full run on main happens after a merge and never after a direct push.
 
 ## The project board
 

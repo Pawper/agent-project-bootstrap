@@ -73,6 +73,30 @@ jobs:
       - name: Fail when STATUS.md is stale
         run: sh status/check.sh
 
+  ci-passed:
+    # The one check branch protection requires. It waits for whichever class
+    # jobs ran and reports once. A class job that was skipped on purpose
+    # counts as fine; one that failed or was cancelled does not. Never put the
+    # per-class jobs in branch protection: they are skipped when a change does
+    # not need them, and a required check that never reports blocks the merge.
+    name: CI passed
+    needs: [classify, app, data, docs, status-page]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report once for every class check that ran
+        shell: sh
+        run: |
+          failed=0
+          for pair in "classify:${{ needs.classify.result }}" "app:${{ needs.app.result }}" "data:${{ needs.data.result }}" "docs:${{ needs.docs.result }}" "status-page:${{ needs.status-page.result }}"; do
+            job=${pair%%:*}
+            result=${pair#*:}
+            echo "$job: $result"
+            case "$result" in failure|cancelled) failed=1 ;; esac
+          done
+          [ "$failed" -eq 0 ] || { echo "A class check failed; see the jobs above." >&2; exit 1; }
+          echo "Every class check that ran is green."
+
   full:
     # The gate on main after every merge. The whole suite, nothing skipped.
     if: github.event_name == 'push'
