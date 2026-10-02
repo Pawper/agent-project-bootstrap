@@ -1,0 +1,14 @@
+{
+  "name": "project-bootstrap",
+  "displayName": "Project Bootstrap",
+  "version": "0.1.0",
+  "description": "Stand up a project so many coding agents can work in it at once without colliding: a skill that decides the homes and the rules, hooks that enforce them, and templates for the files the skill creates.",
+  "author": {
+    "name": "Phillip A. Wessels",
+    "url": "https://github.com/Pawper"
+  },
+  "homepage": "https://github.com/Pawper/agent-project-bootstrap",
+  "repository": "https://github.com/Pawper/agent-project-bootstrap",
+  "license": "MIT",
+  "keywords": ["agents", "bootstrap", "hooks", "ci", "merge-queue", "multi-agent"]
+}
