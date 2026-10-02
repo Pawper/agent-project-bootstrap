@@ -1,0 +1,47 @@
+{
+  "description": "Enforces the project-bootstrap rules: no deletes, no forced pushes, no full test sweeps, no direct edits to generated pages, and no issue filed without a State label.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/block-delete.sh\"",
+            "timeout": 10,
+            "statusMessage": "Checking for deletes"
+          },
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/block-force-push.sh\"",
+            "timeout": 10,
+            "statusMessage": "Checking for a forced push"
+          },
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/block-full-test-sweep.sh\"",
+            "timeout": 10,
+            "statusMessage": "Checking for a full test sweep"
+          },
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/require-state-label.sh\"",
+            "timeout": 10,
+            "statusMessage": "Checking the issue has a State label"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/block-generated-page.sh\"",
+            "timeout": 10,
+            "statusMessage": "Checking the file is not a generated page"
+          }
+        ]
+      }
+    ]
+  }
+}
