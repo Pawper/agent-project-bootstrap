@@ -252,7 +252,13 @@ One command runs every test:
 sh tests/run.sh
 ```
 
-Each test feeds strings to one pure function and compares the output. A sample run:
+Each test feeds strings to one pure function and compares the output. A second script does the whole thing end to end: it copies the templates into a fresh temporary repository and runs every check the way a new project would, including serving the console and reading the page back:
+
+```bash
+sh tests/trial.sh
+```
+
+A sample run of the unit tests:
 
 ```text
 # delete_reason
