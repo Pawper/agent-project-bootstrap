@@ -9,6 +9,28 @@ The lesson this comes from: rules written for one agent become pathologies when 
 the codebase is the one surface every agent must write to, so anything that lives there is something they all
 collide on. Decide the homes and the enforcement first, then let agents build.
 
+## Before anything: a short survey
+
+Do not copy a file until these are answered. Look in the repository first (the remote URL, a `.gitlab-ci.yml`
+or `.github/`, the package manifest, an existing `specs/` or `docs/` folder, a `CLAUDE.md`), state what you
+found, and ask only what you could not tell. Ask in one message, as a short list, with your inference as the
+default for each. In Claude Code use the question tool so the person can pick rather than type.
+
+| Question | Why it matters | Changes |
+|---|---|---|
+| New project, or an existing one showing the symptoms? | An existing project needs the hooks and checks first and the moves to new homes second, one at a time | The order of the outputs; what is moved aside rather than created |
+| Where do issues live: GitHub, GitLab, Jira, Linear, other? | Every home in section 1 points at the tracker | The issue template, the board script, the state script, the audit, the filing hook's label |
+| Where does CI run: Actions, GitLab CI, Buildkite, other? | Section 4 is a set of jobs; the file that holds them differs | Which workflow files are copied or translated |
+| Which agent runtimes will work here: Claude Code only, or others too? | Hooks are per runtime; a rule with no hook needs a CI check instead | Whether AGENTS.md is a copy or the primary; which rules get a weaker check |
+| What is the one-file test command? | The sweep hook needs to know what a targeted run looks like; CLAUDE.md states it | The `TEST_COMMAND` placeholder; the per-class jobs |
+| Which pages are generated? | The generated-page hook refuses edits to them | `.claude/generated-pages.txt` |
+| Spec tool: by hand, GitHub's spec-kit, something else, none yet? | Step 7 and the spec check assume a folder per feature; the tool that fills it is the person's choice | Whether to run a generator inside `specs/<feature>/` or copy the skeleton |
+| Self-hosted runners? | Section 4 wants a fallback when they are offline | Whether the runner-group comment in the full job becomes real |
+| Where will the work folder live, and where is it backed up? | Step 6 is outside the repo and nothing can create it for you | The path named in CLAUDE.md |
+
+Record the answers at the top of CLAUDE.md under a heading "Stack", three or four lines, so the next agent does not
+ask again. If the answers match the preferred stack, say so in one line and go on. If they do not, use section 0.
+
 ## 0. The stack this was designed for, and adapting to another
 
 This skill and its plugin were built for GitHub (issues, a project board, Actions, the `gh` CLI), Claude Code

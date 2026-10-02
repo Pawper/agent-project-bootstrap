@@ -6,6 +6,12 @@ One line on what this project is. Replace every CAPITALIZED placeholder.
 
 Many agents work here at once. Each kind of thing has one home, every rule has something that enforces it, and nothing is appended to a shared page.
 
+## Stack
+
+- Issues and board: GitHub. CI: GitHub Actions. Agent runtime: Claude Code.
+- One-file test command: `TEST_COMMAND path/to/file`. Generated pages: `STATUS.md`.
+- Specs: by hand in `specs/<feature>/`. Work folder: WORK_FOLDER, backed up to BACKUP_LOCATION.
+
 ## Homes
 
 | Kind | Home | Never |
