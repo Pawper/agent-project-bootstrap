@@ -44,6 +44,32 @@ json_field() {
 # seeing more commands, never fewer.
 split_commands() {
   printf '%s\n' "$1" | awk '
+    # Pass 1: drop heredoc bodies (text is data, not commands) and join
+    # lines that end in a backslash, so a command written over several
+    # lines is judged whole.
+    function unquote(w) { gsub(/["'\'']/, "", w); return w }
+    {
+      line = $0
+      sub(/\r$/, "", line)
+      if (inhere) {
+        check = line
+        if (dash) sub(/^\t+/, "", check)
+        if (check == word) inhere = 0
+        next
+      }
+      if (joining) { buf = buf " " line; gsub(/[ \t]+/, " ", buf) } else { buf = line }
+      joining = 0
+      if (buf ~ /\\$/) { sub(/\\$/, "", buf); joining = 1; next }
+      if (match(buf, /<<-?[ \t]*["'\'']?[A-Za-z_][A-Za-z0-9_]*["'\'']?/)) {
+        tok = substr(buf, RSTART, RLENGTH)
+        dash = (tok ~ /^<<-/)
+        sub(/^<<-?[ \t]*/, "", tok)
+        word = unquote(tok)
+        inhere = 1
+      }
+      print buf
+    }
+    END { if (joining && buf != "") print buf }' | awk '
     { gsub(/&&|\|\||;|\||\$\(|`|\(|\)|\{|\}/, "\n"); print }' | awk '
     {
       line = $0

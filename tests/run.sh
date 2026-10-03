@@ -38,6 +38,34 @@ d" "$(split_commands 'a && b; c | d')"
 eq "strips env assignments and sudo" "rm x" "$(split_commands 'FOO=1 sudo rm x')"
 eq "sees inside a subshell" "echo
 rm x" "$(split_commands 'echo $(rm x)')"
+eq "joins a backslash continuation" "gh issue create --title x --label state:ready" "$(split_commands 'gh issue create \
+  --title x \
+  --label state:ready')"
+eq "skips a heredoc body" "cat > f.yml <<EOF
+echo done" "$(split_commands 'cat > f.yml <<EOF
+run: gh issue create --title x
+rm -rf nothing
+EOF
+echo done')"
+eq "skips a quoted heredoc body" "cat <<'EOF' > f
+ls" "$(split_commands "cat <<'EOF' > f
+rm -rf /
+EOF
+ls")"
+eq "a label on a continued line counts" "" "$(state_label_reason 'gh issue create \
+  --title "main is red" \
+  --label "ci-red,state:ready" \
+  --body "x"')"
+eq "a create inside a heredoc is not a command" "" "$(state_label_reason 'cat > .github/workflows/ci.yml <<EOF
+        run: gh issue create --title x
+EOF')"
+eq "an rm inside a heredoc is not a command" "" "$(delete_reason 'cat > script.sh <<EOF
+rm -rf build
+EOF')"
+eq "a command after the heredoc still counts" "rm" "$(delete_reason 'cat > s.sh <<EOF
+echo hi
+EOF
+rm -rf build')"
 
 printf '\n# delete_reason\n'
 eq "rm" "rm" "$(delete_reason 'rm -rf build')"
