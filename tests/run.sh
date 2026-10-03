@@ -265,6 +265,19 @@ specs/sign-in/spec.md
 specs/billing/spec.md')"
 eq "a spec class" "specs" "$(classify_paths 'specs/sign-in/spec.md' "$rules")"
 
+printf '\n# board mappings\n'
+eq "label to state name" "Waiting on owner" "$(state_name_from_label state:waiting-on-owner)"
+eq "ready label" "Ready" "$(state_name_from_label state:ready)"
+eq "not a state label" "" "$(state_name_from_label bug)"
+eq "state name to label" "state:waiting-on-a-service" "$(label_from_state_name 'Waiting on a service')"
+eq "round trip" "After launch" "$(state_name_from_label "$(label_from_state_name 'After launch')")"
+eq "first state label in a list" "state:parked" "$(state_label_in 'bug, state:parked,task')"
+eq "no state label in a list" "" "$(state_label_in 'bug,task')"
+eq "status for in progress" "In Progress" "$(status_for 'In progress' false)"
+eq "status for ready" "Todo" "$(status_for Ready false)"
+eq "status for parked" "Todo" "$(status_for Parked false)"
+eq "status for a closed issue is Done whatever the state" "Done" "$(status_for 'In progress' true)"
+
 printf '\n# audit helpers\n'
 eq "issues without a state label" "12
 15" "$(issues_without_state '12 bug,task

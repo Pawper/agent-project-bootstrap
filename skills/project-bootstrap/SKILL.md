@@ -114,7 +114,8 @@ Create one GitHub project for the repository and set it up so nothing has to be 
 
 - **A State field**, single select, with these seven values: Ready, In progress, Waiting on owner, Waiting on a service, Parked, Dated, After launch. Create it with `gh project field-create <number> --owner <owner> --name State --data-type SINGLE_SELECT --single-select-options "Ready,In progress,Waiting on owner,Waiting on a service,Parked,Dated,After launch"`. Matching labels on the repository, `state:ready` through `state:after-launch`, for the filing hook.
 - **Built-in workflows**, in the project's Workflows tab (the API cannot switch them on, so this is a one-time click each): Auto-add to project with the filter `is:issue is:open` on the repository; Item closed, set Status to Done; Pull request merged, set Status to Done; Auto-add sub-issues to project. Leave Auto-archive off until the board is busy. These act on the board's own Status field; nothing built in moves State.
-- **At filing**, the coordinator sets State on the new issue (`gh project item-edit` with the field and option ids from `gh project field-list`); the filing hook refuses an issue without a state label.
+- **At filing**, the coordinator runs one command (`scripts/state.sh`) that sets the state label, the board's State and the mirrored built-in Status together; the filing hook refuses an issue without a state label.
+- **A nightly sync** (`scripts/board-sync.sh`, run by a scheduled workflow an hour before the audit) makes the label and both board fields agree for every issue, with closed issues as Done.
 - **The board view**: group by State. That view is the status report; nobody writes one.
 - **A nightly audit** (a scheduled workflow) lists open issues with no State, issues still open and Ready after their PR merged, and an open red-main issue, as one comment on a tracking issue, and says nothing when clean.
 
@@ -169,7 +170,7 @@ When this skill runs from the plugin, the hooks in step 3 are already active and
 are ready to copy from `${CLAUDE_PLUGIN_ROOT}/templates/`:
 
 - Step 1: `CLAUDE.md`, `AGENTS.md`, `.claude/generated-pages.txt`
-- Step 2: `.github/ISSUE_TEMPLATE/`, `.github/workflows/state-label.yml`, `scripts/labels.sh`, `scripts/board.sh`, `scripts/state.sh`
+- Step 2: `.github/ISSUE_TEMPLATE/`, `.github/workflows/state-label.yml`, `.github/workflows/board-sync.yml`, `scripts/labels.sh`, `scripts/board.sh`, `scripts/state.sh`, `scripts/board-sync.sh`, `scripts/board-lib.sh`
 - Step 4: `.github/workflows/ci.yml`, `scripts/ci/` (classes, classifier, merge queue, spec, setup and line-endings checks), `.github/workflows/audit.yml`
 - Step 5: `SETUP.md`, `NOTICE.md`, `status/` and the `STATUS.md` it builds
 - Step 6: nothing in the plugin; it lives outside the repo, so create it by hand and name its path in CLAUDE.md

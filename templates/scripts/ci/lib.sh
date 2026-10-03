@@ -134,6 +134,37 @@ has_crlf() {
   if printf '%s' "$1" | tr -d -c '\r' | grep -q .; then echo yes; fi
 }
 
+# state_name_from_label LABEL
+# "state:waiting-on-owner" -> "Waiting on owner". Prints nothing for a label
+# that is not a state label.
+state_name_from_label() {
+  case "$1" in state:*) ;; *) return 0 ;; esac
+  printf '%s\n' "${1#state:}" | tr '-' ' ' | awk '{ $1 = toupper(substr($1, 1, 1)) substr($1, 2); print }'
+}
+
+# label_from_state_name NAME
+# "Waiting on owner" -> "state:waiting-on-owner".
+label_from_state_name() {
+  printf 'state:%s\n' "$(printf '%s' "$1" | tr 'A-Z' 'a-z' | tr ' ' '-')"
+}
+
+# state_label_in LABELS
+# LABELS is a comma separated list. Print the first state label, or nothing.
+state_label_in() {
+  printf '%s\n' "$1" | tr ',' '\n' | sed 's/^[ \t]*//;s/[ \t]*$//' | awk '/^state:/ { print; exit }'
+}
+
+# status_for STATE_NAME CLOSED
+# The board's built-in Status that mirrors a State: Done for a closed issue,
+# In Progress for "In progress", Todo for everything else.
+status_for() {
+  if [ "$2" = "true" ] || [ "$2" = "closed" ] || [ "$2" = "CLOSED" ]; then echo "Done"; return 0; fi
+  case $(printf '%s' "$1" | tr 'A-Z' 'a-z') in
+    "in progress") echo "In Progress" ;;
+    *) echo "Todo" ;;
+  esac
+}
+
 # issues_without_state LINES
 # Each line is "NUMBER label,label,...". Print the numbers whose labels
 # include no "state:" label, one per line.

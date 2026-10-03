@@ -1,0 +1,37 @@
+# Nightly board sync, an hour before the audit, so the audit reads a board
+# that agrees with the labels. Also runs when an issue is closed or
+# reopened, so Status follows at once.
+#
+# Writing to a project needs a token with the project scope; the default
+# workflow token cannot. Create a fine-grained token with "Projects: read
+# and write" and "Issues: read and write", store it as the repository
+# secret PROJECT_TOKEN, and set the two variables below in the repository's
+# Actions variables: BOARD_NUMBER and BOARD_OWNER.
+name: Board sync
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  issues:
+    types: [closed, reopened]
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Make labels, State and Status agree
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        shell: sh
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "PROJECT_TOKEN is not set; the sync cannot write to the board. See the comment at the top of this workflow."
+            exit 0
+          fi
+          sh scripts/board-sync.sh "${{ vars.BOARD_NUMBER }}" "${{ vars.BOARD_OWNER }}"

@@ -164,7 +164,9 @@ All of them live in `templates/` and are meant to be copied into the project roo
 - `.github/workflows/ci.yml`: a classify job, one job per class that runs only when its class changed, the spec, setup and line-endings checks, a status page check on every run, a single summary job named `CI passed` that waits for whichever class jobs ran and reports once, the full suite on every push to main, and an issue labeled `ci-red` when that full run fails. No path filters on the workflow, so every update to a PR starts a run.
 - `scripts/labels.sh`: creates the seven `state:` labels plus `task`, `ci-red` and `audit`.
 - `scripts/board.sh OWNER OWNER/REPO`: creates the labels, the project board and its State field, and links the repository. With `--existing NUMBER` it adopts the board you already have instead of creating one.
-- `scripts/state.sh PROJECT OWNER ISSUE "Ready"`: sets the State field on the board for one issue, so the coordinator can do it right after filing.
+- `scripts/state.sh PROJECT OWNER ISSUE "Ready"`: sets an issue's state in one go, the state label, the board's State field and the mirrored built-in Status, so the coordinator runs one command when filing and the three never disagree.
+- `scripts/board-sync.sh PROJECT OWNER [--dry-run]`: makes label, State and Status agree for every issue, open and closed. The label is the source of truth when present, the board's State otherwise; closed issues get Status Done; an issue with neither is left for the audit to report.
+- `.github/workflows/board-sync.yml`: runs the sync nightly an hour before the audit and when an issue is closed or reopened. Writing to a project needs a token with the project scope, which the default workflow token lacks, so it reads a `PROJECT_TOKEN` secret and says so plainly when it is missing.
 - `.github/workflows/audit.yml`: nightly, comments on the issue labeled `audit` only when an open issue has no State label, a merged PR left its issue open and still ready, or a red-main issue is still open. Says nothing when clean.
 
 ## What the plugin does not do
@@ -242,7 +244,14 @@ The built-in workflows act on the board's own Status field, and the API cannot s
 | Pull request merged | Set Status to `Done` |
 | Auto-add sub-issues to project | On, no settings |
 
-Leave Auto-archive items off until the board is busy. There is no built-in workflow for State itself: the coordinator sets it at filing with `scripts/state.sh`, and the nightly audit catches the issues where that was missed.
+Leave Auto-archive items off until the board is busy. There is no built-in workflow for State itself, so four pieces feed it:
+
+- **At filing**, `scripts/state.sh` sets the label, State and the mirrored Status in one command.
+- **The task template** requires a State in its dropdown, and the `state-label` workflow turns it into the label when the issue is opened or edited.
+- **The nightly sync** makes labels and both board fields agree, with closed issues as Done.
+- **The nightly audit** comments on the one issue labeled `audit` only when an open issue has no State or a merge left one stale, and says nothing when clean.
+
+The built-in Status field mirrors State in three values: Done for a closed issue, In Progress for "In progress", Todo for everything else.
 
 ## Tests
 
