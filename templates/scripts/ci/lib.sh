@@ -89,26 +89,37 @@ spec_check_reason() {
   fi
 }
 
+# setup_manual SETUP_PATTERNS
+# Print the path of the manual named by a "manual PATH" line in the
+# patterns, or SETUP.md when there is none.
+setup_manual() {
+  sm=$(printf '%s\n' "$1" | tr -d '\r' | awk '$1 == "manual" && NF >= 2 { print $2; exit }')
+  printf '%s\n' "${sm:-SETUP.md}"
+}
+
 # setup_check_reason PATHS SETUP_PATTERNS
 # PATHS is one changed path per line. SETUP_PATTERNS is one shell glob per
-# line naming the files whose change is a setup step. Print the first
-# changed path that matches a pattern when SETUP.md did not change with it.
-# Print nothing when SETUP.md changed too or nothing setup-shaped changed.
+# line naming the files whose change is a setup step, plus an optional
+# "manual PATH" line naming the manual when it is not SETUP.md. Print the
+# first changed path that matches a pattern when the manual did not change
+# with it. Print nothing when the manual changed too or nothing setup-shaped
+# changed.
 setup_check_reason() {
   set -f
   sc_hit=
   sc_setup=0
+  sc_manual=$(setup_manual "$2")
   sc_paths=$(printf '%s\n' "$1" | tr -d '\r' | tr '\\' '/')
   case "
 $sc_paths
 " in *"
-SETUP.md
+$sc_manual
 "*) sc_setup=1 ;; esac
   [ "$sc_setup" = 0 ] || { set +f; return 0; }
   sc_hit=$(printf '%s\n' "$sc_paths" | while IFS= read -r sc_p; do
     [ -n "$sc_p" ] || continue
     printf '%s\n' "$2" | tr -d '\r' | while IFS= read -r sc_pat; do
-      case "$sc_pat" in ''|'#'*) continue ;; esac
+      case "$sc_pat" in ''|'#'*|manual\ *|manual\	*) continue ;; esac
       case "$sc_p" in $sc_pat) printf '%s\n' "$sc_p"; break ;; esac
     done
   done | head -n 1)

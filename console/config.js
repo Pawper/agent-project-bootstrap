@@ -8,10 +8,13 @@ const path = require('path');
 
 const CONFIG_PATH = path.join('console', 'services.json');
 
-// The questions every project's FAQ must answer. The test fails when one is
-// missing, so a project cannot quietly drop the question it has no answer to;
-// the answer may say "not built yet".
-const REQUIRED_FAQ = {
+// The default questions an owner console answers, used when the project's
+// config does not declare its own under faq.required. A project with
+// different flows lists the ids it must answer there, and that list replaces
+// this one. Either way the check fails when a required question is missing,
+// so a project cannot quietly drop the question it has no answer to; the
+// answer may say "not built yet".
+const DEFAULT_REQUIRED_FAQ = {
   how: [
     ['merge-queue', 'run the merge queue on a fresh machine'],
     ['stage-upload', 'stage and upload'],
@@ -81,7 +84,21 @@ function normalize(config) {
     link: t.link || '',
     done_when: t.done_when || {},
   }));
-  out.faq = { how: out.faq.how || [], when: out.faq.when || [] };
+  out.faq = { how: out.faq.how || [], when: out.faq.when || [], required: out.faq.required || null };
+  return out;
+}
+
+// The questions this project must answer: its own list when it declares
+// one, the default list otherwise. Each entry is [id, text]; a declared id
+// takes its text from the matching FAQ entry when there is one.
+function requiredFaq(config) {
+  const declared = config.faq && config.faq.required;
+  if (!declared) return DEFAULT_REQUIRED_FAQ;
+  const out = { how: [], when: [] };
+  for (const group of ['how', 'when']) {
+    const byId = new Map((config.faq[group] || []).map((e) => [e.id, e.q]));
+    for (const id of declared[group] || []) out[group].push([id, byId.get(id) || id]);
+  }
   return out;
 }
 
@@ -216,9 +233,10 @@ function envExampleGaps(config, exampleText) {
 // Required FAQ ids that the config does not answer.
 function faqGaps(config) {
   const gaps = [];
+  const required = requiredFaq(config);
   for (const group of ['how', 'when']) {
     const ids = new Set(config.faq[group].map((e) => e.id));
-    for (const [id, text] of REQUIRED_FAQ[group]) if (!ids.has(id)) gaps.push({ group, id, text });
+    for (const [id, text] of required[group]) if (!ids.has(id)) gaps.push({ group, id, text });
   }
   return gaps;
 }
@@ -270,7 +288,8 @@ function buildView(config, options) {
 
 module.exports = {
   CONFIG_PATH,
-  REQUIRED_FAQ,
+  DEFAULT_REQUIRED_FAQ,
+  requiredFaq,
   loadConfig,
   normalize,
   parseEnvText,

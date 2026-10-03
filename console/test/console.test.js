@@ -88,6 +88,20 @@ test('a missing required question is reported', () => {
   assert.equal(gaps[0].id, 'backup');
 });
 
+test('a project declares its own required questions and the default list no longer applies', () => {
+  const own = config.normalize({
+    project: 'Stations',
+    faq: {
+      required: { how: ['restart-a-station'], when: ['a-station-goes-quiet'] },
+      how: [{ id: 'restart-a-station', q: 'Restart a station?', a: 'Press the button.' }],
+      when: [],
+    },
+  });
+  const gaps = config.faqGaps(own);
+  assert.deepEqual(gaps.map((g) => g.id), ['a-station-goes-quiet']);
+  assert.equal(gaps[0].text, 'a-station-goes-quiet');
+});
+
 test('every link in the sample config resolves', () => {
   assert.deepEqual(config.linkGaps(cfg, root), []);
 });

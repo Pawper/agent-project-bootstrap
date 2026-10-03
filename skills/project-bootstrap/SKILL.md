@@ -27,6 +27,8 @@ default for each. In Claude Code use the question tool so the person can pick ra
 | Spec tool: by hand, GitHub's spec-kit, something else, none yet? | Step 7 and the spec check assume a folder per feature; the tool that fills it is the person's choice | Whether to run a generator inside `specs/<feature>/` or copy the skeleton |
 | Self-hosted runners? | Section 4 wants a fallback when they are offline | Whether the runner-group comment in the full job becomes real |
 | Where will the work folder live, and where is it backed up? | Step 6 is outside the repo and nothing can create it for you | The path named in CLAUDE.md |
+| Is there a manual already, and where? | The setup check asks for a line in the manual whenever a setup file changes; it must point at the one the project keeps | The `manual PATH` line in `scripts/ci/setup-paths.txt`; the manual row in the homes table |
+| Which routine tasks and limits does this project really have? | The console's FAQ must answer this project's questions, not the sample's | The `faq.required` ids in `console/services.json` |
 
 Record the answers at the top of CLAUDE.md under a heading "Stack", three or four lines, so the next agent does not
 ask again. If the answers match the preferred stack, say so in one line and go on. If they do not, use section 0.
@@ -151,6 +153,11 @@ order, one pull request per step, so nothing lands all at once and nothing worki
 6. **The board.** If one exists, give its number to the board script instead of letting it create a second.
 7. **The console**, from the example env file the project already has; the check names every setting that
    still has no card, which is the list of systems to describe.
+
+Two files the project may already have deserve a word. **The manual:** keep the one that exists, name it on a
+`manual PATH` line in `scripts/ci/setup-paths.txt`, and do not create `SETUP.md` beside it. **The console's
+questions:** the sample lists the questions of a project with uploads, claims and an importer; a project with
+other flows writes its own ids under `faq.required` and answers those.
 
 Never overwrite. For every template whose file already exists, write the skeleton beside it as
 `NAME.bootstrap.md` (or `.bootstrap.yml`, and so on) and leave the merge to a person. The templates are the

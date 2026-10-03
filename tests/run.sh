@@ -139,6 +139,12 @@ eq "-l with a list" "" "$(state_label_reason 'gh issue create -t x -l bug,state:
 eq "--label= form" "" "$(state_label_reason 'gh issue create --label=state:dated -t x')"
 eq "quoted label" "" "$(state_label_reason "gh issue create -l 'state:waiting-on-owner' -t x")"
 eq "--web opens the form, which requires it" "" "$(state_label_reason 'gh issue create --web')"
+eq "a quoted list with spaces" "" "$(state_label_reason 'gh issue create --title x --label "ci-red, state: ready" --body y')"
+eq "a quoted list with spaces on a continued line" "" "$(state_label_reason 'gh issue create \
+  --title "main is red" \
+  --label "ci-red, state: ready" \
+  --body y')"
+eq "a quoted label with a space but no state" "gh issue create" "$(state_label_reason 'gh issue create -l "needs triage" -t x')"
 eq "gh issue list is fine" "" "$(state_label_reason 'gh issue list')"
 eq "create in a later command" "gh issue create" "$(state_label_reason 'git push && gh issue create -t x')"
 
@@ -297,6 +303,14 @@ SETUP.md' "$setup_pats")"
 eq "no setup file, nothing to check" "" "$(setup_check_reason 'src/a.ts
 docs/b.md' "$setup_pats")"
 eq "workflow change counts as setup" ".github/workflows/ci.yml" "$(setup_check_reason '.github/workflows/ci.yml' "$setup_pats")"
+own_pats="manual docs/setup.md
+$setup_pats"
+eq "the manual defaults to SETUP.md" "SETUP.md" "$(setup_manual "$setup_pats")"
+eq "a manual line names the project's own" "docs/setup.md" "$(setup_manual "$own_pats")"
+eq "the project's own manual satisfies the check" "" "$(setup_check_reason 'migrations/0002_x.sql
+docs/setup.md' "$own_pats")"
+eq "SETUP.md no longer counts when the manual is elsewhere" "migrations/0002_x.sql" "$(setup_check_reason 'migrations/0002_x.sql
+SETUP.md' "$own_pats")"
 eq "crlf found" "yes" "$(has_crlf "$(printf 'a\r\nb')")"
 eq "lf only" "" "$(has_crlf "$(printf 'a\nb')")"
 

@@ -155,7 +155,7 @@ All of them live in `templates/` and are meant to be copied into the project roo
 - `status/`: one stub per feature in `stubs/`, a `services.txt`, and `lib.sh`, `build.sh` and `check.sh`. The build writes `STATUS.md`; the check fails when the page does not match the stubs, and CI runs it on every PR.
 - `specs/constitution.md` and `specs/FEATURE/spec.md`: the rules every spec obeys, written once, and the skeleton for one feature's spec. One folder per feature, so two PRs never edit the same spec file.
 - `scripts/ci/spec-check.sh`: fails a PR that changes `src/` without a change in a feature's spec folder. The constitution does not count, so nobody pokes it to satisfy the check. More than one spec folder in a PR is a warning that the task was too big, not a failure.
-- `scripts/ci/setup-check.sh` and `setup-paths.txt`: fails a PR that changes a setup file (migrations, the example env file, the container files, the workflows, the dependency manifests) without a change to `SETUP.md`.
+- `scripts/ci/setup-check.sh` and `setup-paths.txt`: fails a PR that changes a setup file (migrations, the example env file, the container files, the workflows, the dependency manifests) without a change to the manual. The manual is `SETUP.md` unless a `manual PATH` line in `setup-paths.txt` names the one the project already keeps.
 - `scripts/ci/line-endings.sh` and `.gitattributes`: the attributes file forces LF everywhere; the check fails on any tracked text file that still has CRLF.
 - `console/services.json` and `.env.example`: the one file that drives the owner console, and the example env file the console check reads it against.
 - `scripts/ci/classes.txt`: which paths belong to which change class.
@@ -216,7 +216,7 @@ app.get('/owner', requireOwner, owner.handler);
 **Three checks hold it together**, run by the tests and by `npx agent-project-bootstrap console --check`:
 
 - Every name in `.env.example` has a card, a part or a to-do item. A setting with no card fails.
-- Every required question is present in the FAQ, all nine "How do I" and all seven "What happens when." A missing one fails, so a project cannot quietly drop the question it has no answer to.
+- Every required question is present in the FAQ. The project declares its own list of ids under `faq.required`; without one, the sample's nine "How do I" and seven "What happens when" apply. A missing one fails, so a project cannot quietly drop the question it has no answer to.
 - Every link resolves: a web address parses, a section exists on the page, a file exists in the project.
 
 The sample configuration under `templates/console/` and the matching `templates/.env.example` are the fixture for the tests, so the sample stays valid as the code changes. The screenshot above was made from that sample with a few settings present.

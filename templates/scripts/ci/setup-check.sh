@@ -12,9 +12,11 @@ else
   paths=$(cat)
 fi
 
-hit=$(setup_check_reason "$paths" "$(cat "$here/setup-paths.txt")")
+patterns=$(cat "$here/setup-paths.txt")
+manual=$(setup_manual "$patterns")
+hit=$(setup_check_reason "$paths" "$patterns")
 if [ -n "$hit" ]; then
-  echo "This change touches $hit, which is a setup step, but SETUP.md did not change; add the line that tells the next person what to run." >&2
+  echo "This change touches $hit, which is a setup step, but $manual did not change; add the line that tells the next person what to run." >&2
   exit 1
 fi
 echo "Setup check passed."

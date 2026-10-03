@@ -1,5 +1,7 @@
 # Files whose change is a setup step. A PR that changes one of these must
-# also change SETUP.md. One shell glob per line; * matches a slash too.
+# also change the manual. One shell glob per line; * matches a slash too.
+# The manual is SETUP.md unless a line here says otherwise, for a project
+# that already has one, for example:  manual docs/setup.md
 migrations/*
 .env.example
 Dockerfile

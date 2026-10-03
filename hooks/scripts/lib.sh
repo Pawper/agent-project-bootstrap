@@ -301,14 +301,18 @@ state_label_reason() {
       n = split(line, t, /[ \t]+/)
       if (t[1] != "gh" || t[2] != "issue" || t[3] != "create") next
       found = 0
-      for (j = 4; j <= n; j++) {
-        if (t[j] == "--web" || t[j] == "-w") { found = 1; break }
-        v = ""
-        if (t[j] == "--label" || t[j] == "-l") v = t[j + 1]
-        else if (t[j] ~ /^--label=/) { v = t[j]; sub(/^--label=/, "", v) }
-        else if (t[j] ~ /^-l./) { v = t[j]; sub(/^-l/, "", v) }
-        gsub(/["'\'']/, "", v)
-        if (v ~ /(^|,)state:/) found = 1
+      for (j = 4; j <= n; j++) if (t[j] == "--web" || t[j] == "-w") found = 1
+      # A label value may hold spaces inside its quotes ("ci-red, state: ready"),
+      # so look at the text after each --label up to the next option rather
+      # than at one token. The label itself may be written state:ready or
+      # state: ready.
+      rest = line
+      gsub(/["'\'']/, "", rest)
+      while (match(rest, /(^|[ \t])(--label=|--label[ \t]+|-l[ \t]*)/)) {
+        rest = substr(rest, RSTART + RLENGTH)
+        value = rest
+        if (match(value, /[ \t]-/)) value = substr(value, 1, RSTART - 1)
+        if (value ~ /(^|,)[ \t]*state:/) found = 1
       }
       if (!found) { print "gh issue create"; exit }
     }'

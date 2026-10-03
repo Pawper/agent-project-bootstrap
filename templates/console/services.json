@@ -125,6 +125,10 @@
     }
   ],
   "faq": {
+    "required": {
+      "how": ["merge-queue", "stage-upload", "importer", "service-key", "signing-key", "backup", "old-files", "claim", "report"],
+      "when": ["machine-form", "crawler-images", "payment-fails", "storage-near-plan", "runners-offline", "main-red", "removal"]
+    },
     "how": [
       { "id": "merge-queue", "q": "Run the merge queue on a fresh machine?", "a": "Sign in to GitHub with the CLI, then run the merge queue script with the pull request number. It merges a green pull request without a re-run when main moved only outside its classes, and updates the branch otherwise.", "link": "scripts/ci/merge-queue.sh", "link_label": "The script" },
       { "id": "stage-upload", "q": "Stage and upload a batch of files?", "a": "Put the files in the staging folder and run the upload script. It copies them to object storage and records each upload in the bucket's log, which is the only record kept.", "built": false, "link": "SETUP.md", "link_label": "Setup" },
