@@ -56,7 +56,7 @@ tab=$(printf '\t')
 tmp=$(mktemp)
 
 # Turn the facts into a snapshot, with no further network calls.
-printf '%s\n' "$facts" | while IFS="$tab" read -r kind num title a b c d; do
+printf '%s\n' "$facts" | while IFS="$tab" read -r kind num title a b c d e; do
   case "$kind" in
     pr)
       case "$a" in SUCCESS) ci=green ;; FAILURE|ERROR) ci=red ;; *) ci=pending ;; esac
@@ -74,7 +74,8 @@ printf '%s\n' "$facts" | while IFS="$tab" read -r kind num title a b c d; do
       case "$state" in
         ready)
           owner=no
-          if [ -n "$owner_phrases" ] && [ -n "$(owner_decision_hit "$title" "$owner_phrases")" ]; then owner=yes; fi
+          # Title and the start of the body, both from the one call.
+          if [ -n "$owner_phrases" ] && [ -n "$(owner_decision_hit "$title $c" "$owner_phrases")" ]; then owner=yes; fi
           printf 'issue\t%s\t%s\tready\t%s\n' "$num" "$title" "$owner" ;;
         in-progress|waiting-on-owner|blocked)
           printf 'issue\t%s\t%s\t%s\tno\n' "$num" "$title" "$state" ;;
@@ -108,5 +109,23 @@ printf 'queue\t%s\n' "$queue_state" >> "$tmp"
 
 snapshot=$(cat "$tmp")
 [ "$show_snapshot" = yes ] && { echo "snapshot:"; printf '%s\n' "$snapshot"; echo; }
-echo "proposal (runners $runners, at most $max_agents agents, at most $max_minutes minutes):"
-number_proposal "$(propose_round "$snapshot" "$runners" "$max_agents")"
+# What the saved digest adds: goals that labels alone miss, such as an
+# issue still labeled waiting on owner that the owner has answered. Only
+# summaries that are current count.
+extra=""
+if [ -f .scratch/board/digest.tsv ] && [ -f "$here/../board/board-lib.sh" ]; then
+  . "$here/../board/board-lib.sh"
+  saved=$(cat .scratch/board/digest.tsv)
+  extra=$(digest_goals "$facts" "$saved")
+  fresh=$(digest_freshness "$facts" "$saved")
+  note="digest: ${fresh%%	*} of ${fresh##*	} summaries current"
+else
+  note="digest: none yet; run /project-status so the proposal reads bodies and comments, not only labels"
+fi
+
+echo "proposal (runners $runners, at most $max_agents agents, at most $max_minutes minutes; $note):"
+round=$(propose_round "$snapshot" "$runners" "$max_agents")
+if [ -n "$extra" ]; then
+  round=$(printf '%s\n%s\n' "$extra" "$round" | awk '/^stop: (nothing to propose|everything left waits|work is in flight)/ { print "stop: proposal ready for approval"; next } { print }')
+fi
+number_proposal "$round"

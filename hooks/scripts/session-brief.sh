@@ -39,7 +39,7 @@ run_bounded() {
   if command -v timeout >/dev/null 2>&1; then timeout "$rb_s" "$@"; else "$@"; fi
 }
 
-out="Session brief. Reply from this; do not gather it again, and never run one network call per branch, worktree or issue.
+out="Session brief. Reply from this first. For where each issue and pull request really stands, from bodies and comments, run /project-status: readers summarize only what changed and you keep one line per item. Never run one network call per branch, worktree or issue yourself.
 "
 add() { out="$out$1
 "; }
@@ -81,6 +81,27 @@ if has inprogress || has owner; then
     [ -n "$summary" ] && add "$summary"
   else
     add "Issues: (unavailable)"
+  fi
+fi
+
+# Where things really stand: the saved digest, compared by last-updated
+# time with the facts just read. Local, no network. The lines come from
+# summaries readers wrote from bodies and comments.
+if has inprogress && [ -n "$facts" ] && [ -f "$here/../../scripts/board/board-lib.sh" ]; then
+  . "$here/../../scripts/board/board-lib.sh"
+  saved=""; [ -f .scratch/board/digest.tsv ] && saved=$(cat .scratch/board/digest.tsv)
+  fresh=$(digest_freshness "$facts" "$saved")
+  cur=${fresh%%	*}; tot=${fresh##*	}
+  if [ "${tot:-0}" -gt 0 ]; then
+    if [ -n "$saved" ]; then
+      standing=$(digest_brief_lines "$facts" "$saved" 8)
+      if [ -n "$standing" ]; then add "Where things stand (from the digest):"; add "$standing"; fi
+    fi
+    if [ "$cur" != "$tot" ]; then
+      add "Status digest: $cur of $tot open items have a current summary; $((tot - cur)) changed since. Run /project-status to refresh."
+    else
+      add "Status digest: all $tot open items are current."
+    fi
   fi
 fi
 

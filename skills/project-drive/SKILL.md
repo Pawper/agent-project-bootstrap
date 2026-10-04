@@ -17,7 +17,13 @@ step a.
 
 ## a. Read the state and the standing approval
 
-Run the plan script. It gathers the facts and prints a numbered proposal without doing anything:
+First make sure the picture is complete. Labels and titles are not the state; bodies and comments are. Run
+`/project-status`, which has light readers summarize only the items that changed since their last summary and
+leaves you one line per item. On a quiet board that is no readers at all. A proposal made without it is made
+from labels alone, and the plan script says so in its first line.
+
+Then run the plan script. It gathers the facts, adds what the digest shows, and prints a numbered proposal
+without doing anything:
 
 ```bash
 sh "${CLAUDE_PLUGIN_ROOT}/scripts/drive/plan.sh" --snapshot
@@ -78,6 +84,10 @@ The goal lines and what each means:
 - **`audit TEXT`.** When the facts are plain (an issue with no State whose title says what it is, an issue
   still ready after its pull request merged), set the state or close it. When they are not plain, leave it;
   the audit will say it again tomorrow.
+- **`set-ready N`.** The digest says the owner has answered an issue still labeled waiting on owner. Confirm it
+  by having one reader re-read that issue, then set it to ready with `scripts/state.sh`.
+- **`mark-waiting N`.** The digest says a question to the owner is open on an issue labeled ready or in
+  progress. Confirm the same way, then set `state:waiting-on-owner`.
 - **`restart-queue`.** Stop the queue process if one is still running, look in the main checkout for a stray
   modified tracked file and move it aside, then run the queue again.
 

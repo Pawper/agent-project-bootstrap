@@ -36,6 +36,7 @@ What never changes: one home per kind of thing, nothing appended to a shared pag
 | The hooks | `hooks/hooks.json`, `hooks/scripts/` | Eight hooks that refuse the dangerous commands, the wasteful dispatches, the slow merge pattern and the loose ends before they run; one that refuses to finish a task in a worktree that is not clean; and one that prints the project's live state at session start |
 | The templates | `templates/` | Issue template, CLAUDE.md and AGENTS.md, setup and notice skeletons, the status page and its scripts, the CI workflow, the merge queue, the board setup, the nightly audit |
 | The owner console | `console/`, sample in `templates/console/` | One page: what the project talks to, the state of each system, how to do the routine things |
+| The status skill | `skills/project-status/SKILL.md`, `scripts/board/`, `workflows/board-digest.js` | Where every open issue and pull request really stands, from bodies and comments, read by light subagents and only when an item changed |
 | The drive skill | `skills/project-drive/SKILL.md`, `scripts/drive/` | One round: read the board and the checks, propose what to do next, pursue only what a person approved |
 | The tests | `tests/run.sh` | One test per pure function in every script, plus the console's Node tests |
 
@@ -144,7 +145,7 @@ Every hook reads the tool call before it runs, and when it refuses, it prints on
 
 **An unfinished folder, at the end of a task.** This one runs when an agent tries to finish, not before a command. Inside a linked worktree, where an agent works on one task, `require-clean-worktree.sh` refuses to let the task end while there are files modified or untracked outside `.scratch/`, images or build output in the worktree, or a process still running from that folder. A clean folder is part of done: files written minutes before a merge and never committed were how real work got stranded. It names the first five files and says what to do: commit them, list them in the pull request as deliberately left out, or move scratch into `.scratch/`. It kills nothing and removes nothing. It refuses once; a second stop goes through, so a session can never be trapped. In the main checkout, where a person is usually mid-work, it stays out of the way. The merge queue applies the same folder test when a pull request is queued.
 
-**And one hook that blocks nothing: the session brief.** At every session start, resume and clear, `session-brief.sh` prints the project's live state in one short block, at most forty lines, so the agent can answer on the first turn with no tool calls. It makes exactly one network call, one GraphQL query in `board-now.sh` that returns every open pull request with its check status and every open issue with its labels; everything else is local git. The block holds: the last five commits on main and whether the tree is clean, the open pull requests with their mergeability and CI, the open issues counted by state with the ones in progress, waiting on the owner and ready named, whether the merge queue ran in the last two hours and its last line, how many local branches have commits not on main, how many worktrees there are and in how many folders, the first two lines of the newest handoff note, and the drive's proposal. Long lists are counted, not printed. Its first line tells the agent to reply from it and never to run one network call per branch, worktree or issue. In this repository the whole hook takes about two seconds. A clear prints the short form, main and in progress only. A project's CLAUDE.md and an agent's memory both describe the past; this prints the present, so the agent starts from facts. It reads `.claude/session-brief.json` for the queue log glob, the memory folder and the line limit, and without that file prints only the git and gh sections. Every git and gh call fails soft: a missing or signed-out tool makes its section say "(unavailable)" and the hook still exits cleanly within its twenty-second timeout. It never prints a token, a secret or an environment value.
+**And one hook that blocks nothing: the session brief.** At every session start, resume and clear, `session-brief.sh` prints the project's live state in one short block, at most forty lines, so the agent can answer on the first turn with no tool calls. It makes exactly one network call, one GraphQL query in `board-now.sh` that returns every open pull request with its check status and every open issue with its labels; everything else is local git. The block holds: the last five commits on main and whether the tree is clean, the open pull requests with their mergeability and CI, the open issues counted by state with the ones in progress, waiting on the owner and ready named, whether the merge queue ran in the last two hours and its last line, how many local branches have commits not on main, how many worktrees there are and in how many folders, the first two lines of the newest handoff note, and the drive's proposal. Long lists are counted, not printed. From the saved digest it also prints who has the ball on each item that is waiting on the owner, blocked or in progress, and how many summaries are out of date. Its first line tells the agent to reply from it first, to run `/project-status` for where each item really stands, and never to run one network call per branch, worktree or issue itself. In this repository the whole hook takes about two seconds. A clear prints the short form, main and in progress only. A project's CLAUDE.md and an agent's memory both describe the past; this prints the present, so the agent starts from facts. It reads `.claude/session-brief.json` for the queue log glob, the memory folder and the line limit, and without that file prints only the git and gh sections. Every git and gh call fails soft: a missing or signed-out tool makes its section say "(unavailable)" and the hook still exits cleanly within its twenty-second timeout. It never prints a token, a secret or an environment value.
 
 **When a hook change takes effect.** A hook newly registered in `hooks.json` loads on the next session start. An edit to a script that is already registered applies at once, on the next tool call, because the script is read each time it runs. So after adding a hook, restart the session; after fixing one, do not.
 
@@ -253,6 +254,23 @@ app.get('/owner', requireOwner, owner.handler);
 
 The sample configuration under `templates/console/` and the matching `templates/.env.example` are the fixture for the tests, so the sample stays valid as the code changes. The screenshot above was made from that sample with a few settings present.
 
+## Where things really stand
+
+Titles and labels say what an item is called and what someone last set. The body and the comments say where it stands: whether the owner answered, why it is blocked, who has the ball. An orchestrator that reads all of that itself pays for it in context on every session. So it does not read it.
+
+`/project-status` works in four steps, and the orchestrator's context holds only the last one:
+
+1. **One cheap call** lists every open issue and pull request with its last-updated time.
+2. **Only what changed is fetched.** Each saved summary carries the last-updated time it was written at. An item whose time still matches is not read again. For the rest, one more call writes the body, the last comments and the reviews to `.scratch/board/items/`, one file per item, and prints batches of file paths.
+3. **Light readers summarize.** One subagent per batch, on the lightest model, reads its files in full and returns one line per item: who has the ball (owner, agent, reviewer, service, nobody), the next step, the blocker, and one sentence on what was asked, decided and last said. The plugin also ships this fan-out as a workflow, `board-digest`, for when you want it run that way.
+4. **The lines are saved** as the digest, stamped with each item's last-updated time, and items no longer open drop out.
+
+On a quiet morning that is one call and no readers. On a busy board the first run is the expensive one: in a trial against a public repository with 130 open items, 1.7 MB of bodies and comments went to disk in fifteen seconds and none of it into the orchestrator; the second run read nothing.
+
+The session brief uses the digest at every start, at no cost: it prints who has the ball on what is waiting on the owner, blocked or in progress, marks a line "changed since" when the item moved after its summary, and says how many summaries are out of date. The drive uses it too: an issue still labeled waiting on owner that the owner has answered becomes a proposed `set-ready`, and an issue labeled ready with an open question to the owner becomes a proposed `mark-waiting`. Only current summaries count, and a reader confirms the one issue before any state is changed.
+
+The digest is a cache, not a record. The issues and pull requests are the record.
+
 ## The drive: propose, approve, pursue
 
 The plugin enforces rules and reports drift, and the owner console shows the state. The drive is what moves a project between sessions, and it moves it only where a person said to.
@@ -335,7 +353,7 @@ ok    no overlap merges
 ok    overlap reruns
 ok    ci on main reruns
 
-279 passed, 0 failed
+293 passed, 0 failed
 ```
 
 ## License, privacy and terms

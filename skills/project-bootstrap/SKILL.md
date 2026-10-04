@@ -78,6 +78,7 @@ Write these into the project's CLAUDE.md (and AGENTS.md as a copy for other tool
 - Report what was not done and why, not only what was. Say which commands were refused.
 - No wait loops; bounded commands; stop every shell when done.
 - At session start, reply from the session brief. Never run one network call per branch, worktree or issue in the foreground; the whole board is one call. Count long lists, do not print them.
+- Titles and labels are not the state. For where each issue and pull request really stands, run `/project-status`: light readers summarize bodies and comments, only for items that changed since their last summary, and the orchestrator keeps one line per item.
 - A clean folder is part of done: before reporting finished or opening a pull request, `git status` shows nothing outside the one scratch folder, `.scratch/`. Images and build output never go in a worktree. Stop every process you started from it.
 - A fix to shared code gets its own issue and its own pull request.
 - Work always has an ending: never move a branch from outside its worktree, never add a detached worktree, never close a pull request without a comment saying why or what replaced it.
