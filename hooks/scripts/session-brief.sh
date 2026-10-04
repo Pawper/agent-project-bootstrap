@@ -1,13 +1,14 @@
 #!/bin/sh
 # SessionStart hook: print the live state of the project in one short block
-# so the agent starts from facts, not from notes about the past.
+# so the agent can answer on the first turn from facts, with no tool calls.
 #
-# Reads .claude/session-brief.json in the project when present for the
-# queue log glob, the memory folder and the line limit. Without it, only
-# the git and gh sections print. Every git or gh call fails soft: a missing
-# or signed-out tool makes its section say "(unavailable)" and the hook
-# still exits 0. Nothing here prints a token, a secret or an environment
-# value.
+# One network call (board-now.sh, one GraphQL query) covers every pull
+# request and issue. Everything else is local git: the last commits, the
+# branches with commits not on main, the worktrees. Reads
+# .claude/session-brief.json when present for the queue log glob, the
+# memory folder and the line limit. Every call fails soft: a missing or
+# signed-out tool makes its section say "(unavailable)" and the hook still
+# exits 0. Nothing here prints a token, a secret or an environment value.
 here=$(dirname "$0")
 . "$here/lib.sh"
 . "$here/session-brief-lib.sh"
@@ -32,21 +33,23 @@ fi
 sections=$(brief_sections "$source")
 has() { case " $sections " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
-# run_bounded COMMAND...: run with a short timeout when one is available.
+# run_bounded SECONDS COMMAND...: run with a timeout when one is available.
 run_bounded() {
-  if command -v timeout >/dev/null 2>&1; then timeout 8 "$@"; else "$@"; fi
+  rb_s=$1; shift
+  if command -v timeout >/dev/null 2>&1; then timeout "$rb_s" "$@"; else "$@"; fi
 }
 
-gh_ok=no
-if command -v gh >/dev/null 2>&1 && run_bounded gh auth status >/dev/null 2>&1; then gh_ok=yes; fi
-
-out=""
+out="Session brief. Reply from this; do not gather it again, and never run one network call per branch, worktree or issue.
+"
 add() { out="$out$1
 "; }
 
+have_git=no
+if command -v git >/dev/null 2>&1 && git rev-parse --git-dir >/dev/null 2>&1; then have_git=yes; fi
+
 # Main
 if has main; then
-  if command -v git >/dev/null 2>&1 && git rev-parse --git-dir >/dev/null 2>&1; then
+  if [ "$have_git" = yes ]; then
     log=$(git log --oneline -5 2>/dev/null)
     dirty=$(git status --porcelain 2>/dev/null | head -n 1)
     add "Main:"
@@ -57,30 +60,32 @@ if has main; then
   fi
 fi
 
-# Open pull requests
+# The board, in one call.
+facts=""
+if has prs || has inprogress || has owner || has proposal; then
+  facts=$(run_bounded 10 sh "$here/board-now.sh" 2>/dev/null) || facts=""
+fi
+
 if has prs; then
-  if [ "$gh_ok" = yes ]; then
-    prs=$(run_bounded gh pr list --limit 10 --json number,title,mergeable,statusCheckRollup --jq '
-      .[] | [
-        .number, .title, .mergeable,
-        ([.statusCheckRollup[]? | select(.conclusion == "SUCCESS" or .state == "SUCCESS")] | length),
-        ([.statusCheckRollup[]? | select((.conclusion // "") | test("FAILURE|TIMED_OUT|CANCELLED|ACTION_REQUIRED")) ] | length)
-          + ([.statusCheckRollup[]? | select((.state // "") | test("FAILURE|ERROR"))] | length),
-        ([.statusCheckRollup[]? | select((.conclusion == null or .conclusion == "") and (.state == null or .state == "PENDING" or .state == "EXPECTED"))] | length)
-      ] | @tsv' 2>/dev/null) || prs=""
-    if [ -n "$prs" ]; then
-      lines=$(printf '%s\n' "$prs" | while IFS= read -r line; do [ -n "$line" ] && pr_line "$line"; done)
-      add "Open pull requests:"
-      add "$lines"
-    fi
+  if [ -n "$facts" ]; then
+    lines=$(pr_brief_lines "$facts" 10)
+    if [ -n "$lines" ]; then add "Open pull requests:"; add "$lines"; fi
   else
     add "Open pull requests: (unavailable)"
   fi
 fi
 
+if has inprogress || has owner; then
+  if [ -n "$facts" ]; then
+    summary=$(issues_summary "$facts")
+    [ -n "$summary" ] && add "$summary"
+  else
+    add "Issues: (unavailable)"
+  fi
+fi
+
 # Queue
 if has queue && [ -n "$queue_glob" ]; then
-  set -f; set +f
   newest=""; newest_m=0
   for f in $queue_glob; do
     [ -f "$f" ] || continue
@@ -97,15 +102,14 @@ if has queue && [ -n "$queue_glob" ]; then
   fi
 fi
 
-# In progress
-if has inprogress; then
-  if [ "$gh_ok" = yes ]; then
-    ip=$( { run_bounded gh issue list --label "state:in-progress" --limit 10 --json number,title --jq '.[] | "#\(.number) \(.title)"' 2>/dev/null;
-           run_bounded gh issue list --label "state: in progress" --limit 10 --json number,title --jq '.[] | "#\(.number) \(.title)"' 2>/dev/null; } | awk '!seen[$0]++')
-    if [ -n "$ip" ]; then add "In progress:"; add "$(trim_section "$ip" 10)"; fi
-  else
-    add "In progress: (unavailable)"
-  fi
+# Leftover work and worktrees: local git only, one call each.
+if has leftover && [ "$have_git" = yes ]; then
+  default=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || echo main)
+  refs=$(git for-each-ref --format="%(refname:short)%09%(ahead-behind:$default)" refs/heads 2>/dev/null) || refs=""
+  left=$(leftover_summary "$refs" 5)
+  [ -n "$left" ] && add "$left"
+  wt=$(worktree_summary "$(git worktree list --porcelain 2>/dev/null)")
+  [ -n "$wt" ] && add "$wt"
 fi
 
 # Last handoff
@@ -122,27 +126,13 @@ if has handoff && [ -n "$memory_dir" ] && [ -d "$memory_dir" ]; then
   fi
 fi
 
-# Owner actions waiting
-if has owner; then
-  if [ "$gh_ok" = yes ]; then
-    wo=$( { run_bounded gh issue list --label "state:waiting-on-owner" --limit 5 --json number,title --jq '.[] | "#\(.number) \(.title)"' 2>/dev/null;
-           run_bounded gh issue list --label "state: waiting on owner" --limit 5 --json number,title --jq '.[] | "#\(.number) \(.title)"' 2>/dev/null; } | awk '!seen[$0]++')
-    if [ -n "$wo" ]; then add "Owner actions waiting:"; add "$(trim_section "$wo" 5)"; fi
-  else
-    add "Owner actions waiting: (unavailable)"
-  fi
-fi
-
 # Proposed next, when the project runs the drive. Read-only: nothing here
-# acts, and the line says so. The plan script does several gh calls, so it
-# gets its own bound inside the hook's twenty seconds.
+# acts, and the line says so. The plan reuses the facts already fetched.
 if has proposal && [ -f .claude/project-drive.json ] && [ -f "$here/../../scripts/drive/plan.sh" ]; then
-  if [ "$gh_ok" = yes ]; then
-    if command -v timeout >/dev/null 2>&1; then
-      plan=$(timeout 12 sh "$here/../../scripts/drive/plan.sh" 2>/dev/null) || plan=""
-    else
-      plan=$(sh "$here/../../scripts/drive/plan.sh" 2>/dev/null) || plan=""
-    fi
+  if [ -n "$facts" ]; then
+    ff=$(mktemp)
+    printf '%s\n' "$facts" > "$ff"
+    plan=$(run_bounded 5 sh "$here/../../scripts/drive/plan.sh" --fast --facts "$ff" 2>/dev/null) || plan=""
     goals=$(printf '%s\n' "$plan" | grep -E '^[0-9]+\. ' || true)
     if [ -n "$goals" ]; then
       add "Proposed next (nothing runs until you approve; /project-drive asks):"

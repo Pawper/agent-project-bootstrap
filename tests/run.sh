@@ -204,7 +204,50 @@ b
 c
 d' 2)"
 eq "a clear prints the short form" "main inprogress" "$(brief_sections clear)"
-eq "a startup prints everything" "main prs queue inprogress handoff owner proposal" "$(brief_sections startup)"
+eq "a startup prints everything" "main prs queue inprogress leftover handoff owner proposal" "$(brief_sections startup)"
+facts=$(cat "$fx/board-facts.tsv")
+eq "pr lines from the one-call facts" "#41 Add retries (mergeable, CI green)
+#42 Fix the parser (has conflicts, CI red)
+#45 Rename the page (mergeability unknown, CI running)
+#47 Docs only (mergeable, no CI yet)" "$(pr_brief_lines "$facts" 10)"
+eq "pr lines past the limit are counted" "#41 Add retries (mergeable, CI green)
+(and 3 more)" "$(pr_brief_lines "$facts" 1)"
+eq "state from labels, either spelling" "in-progress in-progress none" "$(printf '%s %s %s' "$(state_of_labels 'task,state:in-progress')" "$(state_of_labels 'state: in progress')" "$(state_of_labels 'bug,task')")"
+eq "issues grouped by state, long lists counted" "Issues: 57 open. 3 ready, 2 in progress, 1 waiting on owner, 1 parked, 1 no state (first 8 read)
+In progress:
+#20 Billing
+#21 Search
+Owner actions waiting:
+#30 Choose the logo
+Ready:
+#12 Add the exporter
+#13 Set the price of the plan
+#77 main is red" "$(issues_summary "$facts")"
+eq "no issues, no summary" "" "$(issues_summary 'pr	1	x	NONE	MERGEABLE	b	')"
+eq "leftover work from one local listing" "Leftover work: 2 of 4 local branches have commits not on main.
+retries (3)
+rename (1)" "$(leftover_summary "$(printf 'main\t0 0\nretries\t3 12\nparser\t0 4\nrename\t1 0\n')" 5)"
+eq "nothing ahead, nothing said" "" "$(leftover_summary "$(printf 'main\t0 0\nparser\t0 4\n')" 5)"
+porcelain=$(cat "$fx/worktrees.porcelain")
+eq "worktrees counted with their folders" "Worktrees: 4 besides the main checkout, in 2 folders. Tidy with: sh scripts/worktrees.sh prune" "$(worktree_summary "$porcelain")"
+eq "only the main checkout, nothing said" "" "$(worktree_summary 'worktree /repo
+branch refs/heads/main')"
+
+printf '\n# worktrees\n'
+. "$root/templates/scripts/worktrees-lib.sh"
+pairs=$(worktree_branches "$porcelain")
+eq "path and branch per worktree, main left out" "C:/Users/me/Documents/GitHub/app-retries	retries
+C:/Users/me/Documents/GitHub/app-parser	parser
+C:/Users/me/Documents/GitHub/app/.claude/worktrees/rename	rename
+C:/Users/me/Documents/GitHub/app/.claude/worktrees/loose	" "$pairs"
+eq "merged branches are prunable, detached never" "C:/Users/me/Documents/GitHub/app-retries
+C:/Users/me/Documents/GitHub/app/.claude/worktrees/rename" "$(prunable_worktrees "$pairs" 'retries
+rename
+loose')"
+eq "one branch only" "C:/Users/me/Documents/GitHub/app/.claude/worktrees/rename" "$(prunable_worktrees "$pairs" 'retries
+rename' rename)"
+eq "an unmerged branch is not prunable" "" "$(prunable_worktrees "$pairs" 'other')"
+eq "places counted" "2 2" "$(worktree_places "$pairs" | cut -f1 | tr '\n' ' ' | sed 's/ $//')"
 
 printf '\n# project drive\n'
 . "$root/scripts/drive/drive-lib.sh"

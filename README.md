@@ -139,9 +139,21 @@ Every hook reads the tool call before it runs, and when it refuses, it prints on
 
 **The serial merge pattern.** `merge-queue.sh` with more than two pull request numbers and neither `--batch` nor `--serial`. One project merged seven pull requests one at a time, each with its own full browser run, in ninety minutes; thirteen went through one integration branch with scoped tests and one full run in twenty. Merging must never take longer than the development did, so the batch is the unit of merging. `--serial` is always allowed, because a migration or a risky change should land alone by choice, and two or fewer pull requests without a flag are allowed. The notes in `templates/scripts/ci/QUEUE.md` say when to batch and when not to.
 
-**And one hook that blocks nothing: the session brief.** At every session start, resume and clear, `session-brief.sh` prints the project's live state in one short block, at most forty lines: the last five commits on main and whether the tree is clean, the open pull requests with their mergeability and CI, whether the merge queue ran in the last two hours and its last line, the issues in progress, the first two lines of the newest handoff note, and the issues waiting on the owner. A clear prints the short form, main and in progress only. A project's CLAUDE.md and an agent's memory both describe the past; this prints the present, so the agent starts from facts. It reads `.claude/session-brief.json` for the queue log glob, the memory folder and the line limit, and without that file prints only the git and gh sections. Every git and gh call fails soft: a missing or signed-out tool makes its section say "(unavailable)" and the hook still exits cleanly within its twenty-second timeout. It never prints a token, a secret or an environment value.
+**And one hook that blocks nothing: the session brief.** At every session start, resume and clear, `session-brief.sh` prints the project's live state in one short block, at most forty lines, so the agent can answer on the first turn with no tool calls. It makes exactly one network call, one GraphQL query in `board-now.sh` that returns every open pull request with its check status and every open issue with its labels; everything else is local git. The block holds: the last five commits on main and whether the tree is clean, the open pull requests with their mergeability and CI, the open issues counted by state with the ones in progress, waiting on the owner and ready named, whether the merge queue ran in the last two hours and its last line, how many local branches have commits not on main, how many worktrees there are and in how many folders, the first two lines of the newest handoff note, and the drive's proposal. Long lists are counted, not printed. Its first line tells the agent to reply from it and never to run one network call per branch, worktree or issue. In this repository the whole hook takes about two seconds. A clear prints the short form, main and in progress only. A project's CLAUDE.md and an agent's memory both describe the past; this prints the present, so the agent starts from facts. It reads `.claude/session-brief.json` for the queue log glob, the memory folder and the line limit, and without that file prints only the git and gh sections. Every git and gh call fails soft: a missing or signed-out tool makes its section say "(unavailable)" and the hook still exits cleanly within its twenty-second timeout. It never prints a token, a secret or an environment value.
 
 **When a hook change takes effect.** A hook newly registered in `hooks.json` loads on the next session start. An edit to a script that is already registered applies at once, on the next tool call, because the script is read each time it runs. So after adding a hook, restart the session; after fixing one, do not.
+
+**When a plugin update reaches an installed copy.** The manifest carries a version, and an installed copy stays on the version it was installed at until that number changes. A project that installed 0.1.0 does not have the session brief, the batch hook or the drive. Update it, then start a new session:
+
+```bash
+claude plugin marketplace update agent-project-bootstrap
+```
+
+```bash
+claude plugin update project-bootstrap@agent-project-bootstrap
+```
+
+A session started with `--plugin-dir` reads the checkout on disk and is always current.
 
 Sample of what a refusal looks like, from the delete hook:
 
@@ -172,6 +184,7 @@ All of them live in `templates/` and are meant to be copied into the project roo
 - `scripts/ci/classify.sh`: prints the classes for a diff.
 - `scripts/ci/merge-queue.sh --batch PR...`: the queue's default for more than two pull requests. Cuts an integration branch from main, merges each in order with a merge commit, runs the type-check and only the test files that pull request touched after each merge, drops one that conflicts or goes red with one printed line, rebuilds the status page, opens one pull request that closes every carried issue, waits for the one full run, merges it, then runs the serial queue for anything dropped. `--serial PR...` keeps the one-at-a-time behavior by choice: merge a green PR without a re-run when main moved only outside its classes, update the branch when it moved inside them. The pure parts are in `batch-lib.sh`; the one-file test runner is `run-test-file.mjs`; the notes are in `QUEUE.md`. Turn off "require branches to be up to date" in branch protection; this script is the queue.
 - `.github/workflows/ci.yml`: a classify job, one job per class that runs only when its class changed, the spec, setup and line-endings checks, a status page check on every run, a single summary job named `CI passed` that waits for whichever class jobs ran and reports once, the full suite on every push to main, and an issue labeled `ci-red` when that full run fails. No path filters on the workflow, so every update to a PR starts a run.
+- `scripts/worktrees.sh list | prune [--apply] [--branch NAME]`: the sanctioned way to tidy worktrees. It removes the worktree of a branch that is merged, by git or by a merged pull request, and only when it is clean; it skips a dirty one with a reason and never removes a branch. Without `--apply` it only prints. The merge queue calls it for each pull request it merges, so worktrees go when their work lands, and `prune --apply` clears a backlog. Keep worktrees in one folder, named in CLAUDE.md, so they stay countable.
 - `scripts/labels.sh`: creates the eight `state:` labels plus `task`, `ci-red`, `audit` and `drive`.
 - `scripts/board.sh OWNER OWNER/REPO`: creates the labels, the project board and its State field, and links the repository. With `--existing NUMBER` it adopts the board you already have instead of creating one.
 - `scripts/state.sh PROJECT OWNER ISSUE "Ready"`: sets an issue's state in one go, the state label, the board's State field and the mirrored built-in Status, so the coordinator runs one command when filing and the three never disagree.
@@ -315,7 +328,7 @@ ok    no overlap merges
 ok    overlap reruns
 ok    ci on main reruns
 
-237 passed, 0 failed
+251 passed, 0 failed
 ```
 
 ## License
