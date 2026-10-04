@@ -133,5 +133,29 @@ if has owner; then
   fi
 fi
 
+# Proposed next, when the project runs the drive. Read-only: nothing here
+# acts, and the line says so. The plan script does several gh calls, so it
+# gets its own bound inside the hook's twenty seconds.
+if has proposal && [ -f .claude/project-drive.json ] && [ -f "$here/../../scripts/drive/plan.sh" ]; then
+  if [ "$gh_ok" = yes ]; then
+    if command -v timeout >/dev/null 2>&1; then
+      plan=$(timeout 12 sh "$here/../../scripts/drive/plan.sh" 2>/dev/null) || plan=""
+    else
+      plan=$(sh "$here/../../scripts/drive/plan.sh" 2>/dev/null) || plan=""
+    fi
+    goals=$(printf '%s\n' "$plan" | grep -E '^[0-9]+\. ' || true)
+    if [ -n "$goals" ]; then
+      add "Proposed next (nothing runs until you approve; /project-drive asks):"
+      add "$(trim_section "$goals" 8)"
+    elif [ -n "$plan" ]; then
+      add "Proposed next: $(printf '%s\n' "$plan" | grep '^stop:' | head -n 1 | sed 's/^stop: //')"
+    else
+      add "Proposed next: (unavailable)"
+    fi
+  else
+    add "Proposed next: (unavailable)"
+  fi
+fi
+
 trim_section "$(printf '%s' "$out")" "$max_lines"
 exit 0
