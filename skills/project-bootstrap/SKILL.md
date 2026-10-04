@@ -78,6 +78,9 @@ Write these into the project's CLAUDE.md (and AGENTS.md as a copy for other tool
 - Report what was not done and why, not only what was. Say which commands were refused.
 - No wait loops; bounded commands; stop every shell when done.
 - At session start, reply from the session brief. Never run one network call per branch, worktree or issue in the foreground; the whole board is one call. Count long lists, do not print them.
+- A clean folder is part of done: before reporting finished or opening a pull request, `git status` shows nothing outside the one scratch folder, `.scratch/`. Images and build output never go in a worktree. Stop every process you started from it.
+- A fix to shared code gets its own issue and its own pull request.
+- Work always has an ending: never move a branch from outside its worktree, never add a detached worktree, never close a pull request without a comment saying why or what replaced it.
 - Worktrees live in one folder and go when their pull request merges. Removing the worktree of a merged branch is the one cleanup allowed, through the worktree script, because the branch keeps the work.
 - Dispatch an agent with a model that fits its task: a light model for a lookup, a middle one for routine work, a heavy one only for hard work.
 
@@ -88,6 +91,9 @@ first hour:
 
 - **A hook that blocks the dangerous command** (delete, force-push, full test sweep, a direct write to a shared
   page, an issue without a State, an agent dispatched without a fitting model) rather than asking the agent to avoid it.
+- **A hook at the end of a task** that refuses to finish in a worktree that is not clean: files outside the
+  scratch folder, stray images or build output, a process still running from it. It refuses once and names
+  what it found; the merge queue checks the same thing when a pull request is queued.
 - **A CI check that fails on drift**: the generated status page, a source change without its spec, a setup
   change without its setup line, line endings, and, when the project has them, the data shape and the
   catalog-wide rules.
@@ -138,7 +144,7 @@ Create one GitHub project for the repository and set it up so nothing has to be 
 Create, in order:
 1. The repository with CLAUDE.md and AGENTS.md from sections 1 and 2, short, pointing at the hooks and checks.
 2. The issue template with the State field; the project board set up exactly as section 5 says; the labels.
-3. The hooks, which the plugin provides: block delete, force-push, full sweeps, direct writes to generated pages, issue creation without a state label, agent dispatch without a fitting model, and the serial merge of more than two PRs without a named mode.
+3. The hooks, which the plugin provides: block delete, force-push, full sweeps, direct writes to generated pages, issue creation without a state label, agent dispatch without a fitting model, the serial merge of more than two PRs without a named mode, a pull request closed without a comment, a detached worktree; and the stop hook that refuses to finish a task in a worktree that is not clean. Also the project's `.gitignore`, with the scratch folder and the generated files that make a clean folder look dirty.
 4. The CI skeleton from section 4: the classifier, the per-class jobs, the `CI passed` summary, the status-page, spec, setup-line and line-endings checks, the full run on main, the merge queue, the nightly audit. Then branch protection by hand.
 5. The setup document, the notice file, the one-screen status page and its build and check scripts.
 6. The work folder outside the repo, with a register for research and an off-site backup scheduled.
@@ -208,7 +214,8 @@ are ready to copy from `${CLAUDE_PLUGIN_ROOT}/templates/`:
 - Step 6: nothing in the plugin; it lives outside the repo, so create it by hand and name its path in CLAUDE.md
 - Step 7: `specs/constitution.md` and `specs/FEATURE/spec.md`, checked by `scripts/ci/spec-check.sh`
 - Step 8: `console/services.json` and `.env.example`; the page itself comes from the plugin's `console/` and needs no copy
-- Step 4 also: `scripts/worktrees.sh` and `scripts/worktrees-lib.sh`, which the merge queue calls to remove a merged branch's worktree
+- Step 3 also: `.gitignore`, with `.scratch/` and the generated files
+- Step 4 also: `scripts/worktrees.sh` and `scripts/worktrees-lib.sh`, which the merge queue calls to check a pull request's folder when it is queued and to remove a merged branch's worktree and branch; `scripts/ci/shared-check.sh` and `shared-paths.txt`
 - Step 9: `.claude/session-brief.json`; the hook comes from the plugin
 - Step 10: `.claude/project-drive.json`; the skill and its scripts come from the plugin; the drive issue is filed with `gh issue create --title Drive --label drive,state:parked`
 

@@ -1,7 +1,7 @@
 {
   "name": "project-bootstrap",
   "displayName": "Project Bootstrap",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "icon": "./assets/icon.png",
   "documentationUrl": "https://github.com/Pawper/agent-project-bootstrap#readme",
   "supportUrl": "https://github.com/Pawper/agent-project-bootstrap/issues",

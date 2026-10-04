@@ -60,9 +60,41 @@ typecheck=${QUEUE_TYPECHECK_COMMAND:-}
 if [ -z "$typecheck" ] && [ -f tsconfig.json ]; then typecheck="npx tsc --noEmit"; fi
 test_one=${QUEUE_TEST_COMMAND:-"node $here/run-test-file.mjs"}
 
+[ -f "$here/../worktrees-lib.sh" ] && . "$here/../worktrees-lib.sh"
+
+# worktree_of BRANCH: the local worktree that has the branch checked out.
+worktree_of() {
+  command -v worktree_for_branch >/dev/null 2>&1 || return 0
+  worktree_for_branch "$(worktree_branches "$(git worktree list --porcelain)")" "$1"
+}
+
+# folder_blocks PR: print why a PR may not be queued when its worktree has
+# uncommitted files outside .scratch/. The folder is checked when the PR is
+# queued, not after the merge, so a file written minutes before is caught.
+folder_blocks() {
+  fb_branch=$(gh pr view "$1" --json headRefName -q .headRefName 2>/dev/null || true)
+  fb_path=$(worktree_of "$fb_branch")
+  [ -n "$fb_path" ] || return 0
+  fb_dirty=$(dirty_non_scratch "$(git -C "$fb_path" status --porcelain 2>/dev/null)")
+  [ -n "$fb_dirty" ] || return 0
+  printf 'its worktree has %s uncommitted file(s) outside .scratch/, first: %s\n' \
+    "$(printf '%s\n' "$fb_dirty" | wc -l | tr -d ' ')" "$(printf '%s\n' "$fb_dirty" | head -n 1)"
+}
+
+# sync_worktree BRANCH: never move a branch from outside its worktree. When
+# the queue advances a branch on the remote, bring the worktree's files
+# along, so the folder does not look full of edits it never made.
+sync_worktree() {
+  sw_path=$(worktree_of "$1")
+  [ -n "$sw_path" ] || return 0
+  git -C "$sw_path" pull -q --ff-only >/dev/null 2>&1 || echo "note: the worktree at $sw_path could not fast-forward; update it by hand before working there"
+}
+
 # serial_one PR: today's behavior for one PR.
 serial_one() {
   pr=$1
+  why=$(folder_blocks "$pr")
+  if [ -n "$why" ]; then batch_line "$pr" "refused" "$why"; return 0; fi
   git fetch -q origin "$base" "pull/$pr/head"
   head=$(gh pr view "$pr" --json headRefOid -q .headRefOid)
   merge_base=$(git merge-base "origin/$base" "$head")
@@ -74,6 +106,7 @@ serial_one() {
   fi
   if [ "$(needs_rerun "$pr_classes" "$main_classes")" = yes ]; then
     gh pr update-branch "$pr" >/dev/null
+    sync_worktree "$(gh pr view "$pr" --json headRefName -q .headRefName 2>/dev/null || true)"
     batch_line "$pr" "updated" "main moved in its classes (PR: ${pr_classes:-none}; main: ${main_classes:-none}), CI runs again"
     return 0
   fi
@@ -111,6 +144,8 @@ carried=""
 dropped=""
 good=$(git rev-parse HEAD)
 for pr in $prs; do
+  why=$(folder_blocks "$pr")
+  if [ -n "$why" ]; then batch_line "$pr" "refused" "$why"; continue; fi
   git fetch -q origin "pull/$pr/head" || { batch_line "$pr" "dropped" "could not fetch it"; dropped="$dropped $pr"; continue; }
   head=$(git rev-parse FETCH_HEAD)
   title=$(gh pr view "$pr" --json title -q .title 2>/dev/null || echo "PR $pr")

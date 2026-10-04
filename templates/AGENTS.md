@@ -35,6 +35,12 @@ Many agents work here at once. Each kind of thing has one home, every rule has s
 - Report what was not done and why, not only what was. Say which commands were refused.
 - No wait loops; bounded commands; stop every shell when done.
 - At session start, reply from the session brief. Never run one network call per branch, worktree or issue in the foreground; one call for the whole board is `sh "$CLAUDE_PLUGIN_ROOT/hooks/scripts/board-now.sh"`. Count long lists, do not print them.
+- A clean folder is part of done. Before you report finished or open a pull request, `git status` shows nothing outside `.scratch/`. Commit the files, or list them in the pull request as deliberately left out.
+- One scratch folder, `.scratch/`, which git ignores. Probe scripts, screenshots and notes go there and nowhere else, so any other untracked file means real work.
+- Images and build output never go in a worktree. They belong in the work folder outside the repository.
+- A fix to shared code gets its own issue and its own pull request. Never patch shared code to get your own build through and ship only your part.
+- Stop what you started. Any server or watcher you started from a worktree ends before you finish.
+- Never move a branch from outside its worktree, never add a detached worktree, and never close a pull request without a comment saying why or what replaced it; `sh scripts/worktrees.sh close PR "reason"` does the whole ending.
 - Worktrees live in one folder, WORKTREE_DIR, and go when their pull request merges. The merge queue removes them; `sh scripts/worktrees.sh prune --apply` clears a backlog. It is the one cleanup allowed, because the branch keeps the work.
 
 ## What enforces each rule
@@ -49,6 +55,9 @@ Many agents work here at once. Each kind of thing has one home, every rule has s
 | A red main is seen | The `full` CI job opens an issue labeled `ci-red` when it fails |
 | No usage wasted on dispatch | The `require-agent-model` hook refuses an agent or workflow dispatch without a model that fits the task |
 | Merging never outlasts the work | The `require-batch-merge` hook refuses more than two PRs through the queue without `--batch` or `--serial`; see `scripts/ci/QUEUE.md` |
+| A clean folder is part of done | The `require-clean-worktree` hook refuses to finish a task in a worktree with files outside `.scratch/`, stray images or build output, or a process still running from it; the merge queue refuses a pull request whose worktree is not clean |
+| Shared code changes alone | The `shared-check` CI job fails a pull request that edits a path in `scripts/ci/shared-paths.txt` together with other work |
+| Work always has an ending | The `block-loose-ends` hook refuses `gh pr close` without a comment and a detached worktree; `scripts/worktrees.sh` removes ended worktrees and their branches, keeping a closed branch's commits under a `closed/` tag; the nightly audit reports branches left on the remote after their pull request ended |
 | A session starts from facts | The `session-brief` hook prints main, open PRs, the queue, what is in progress, the last handoff and what waits on the owner at every session start; `.claude/session-brief.json` tells it where to look |
 | A setup change carries its line | The `setup-check` CI job fails a PR that changes a file in `scripts/ci/setup-paths.txt` without changing `SETUP.md` |
 | A source change carries its spec | The `spec-check` CI job fails a PR that changes `src/` without a change in a `specs/<feature>/` folder |

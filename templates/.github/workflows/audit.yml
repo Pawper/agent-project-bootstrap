@@ -46,7 +46,15 @@ jobs:
 
           red=$(gh issue list --label ci-red --state open --limit 20 --json number --jq '.[].number')
 
-          body=$(audit_comment "$missing" "$stale" "$red")
+          # Branches left on the remote after their pull request ended. The
+          # audit runs here and cannot see folders on anyone's machine, so
+          # this is the half of the worktree check it can do; the session
+          # brief and scripts/worktrees.sh audit do the local half.
+          ended=$(gh pr list --state closed --limit 300 --json headRefName --jq '.[].headRefName' | sort -u)
+          remote=$(git ls-remote --heads origin | sed 's#.*refs/heads/##')
+          branches=$(ended_remote_branches "$remote" "$ended" "${{ github.event.repository.default_branch }}")
+
+          body=$(audit_comment "$missing" "$stale" "$red" "$branches")
           if [ -z "$body" ]; then
             echo "Clean. Nothing to say."
             exit 0

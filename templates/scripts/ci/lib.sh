@@ -128,6 +128,31 @@ $sc_manual
   return 0
 }
 
+# shared_mix_reason PATHS SHARED_PATTERNS
+# PATHS is one changed path per line. SHARED_PATTERNS is one shell glob per
+# line naming shared code. Print the first shared path when the change
+# touches shared code and also touches something that is not shared. Print
+# nothing when the change is only shared code, touches none, or the list
+# is empty.
+shared_mix_reason() {
+  set -f
+  sm_shared=""; sm_other=0
+  sm_out=$(printf '%s\n' "$1" | tr -d '\r' | tr '\\' '/' | while IFS= read -r sm_p; do
+    [ -n "$sm_p" ] || continue
+    sm_hit=no
+    printf '%s\n' "$2" | tr -d '\r' > /dev/null
+    for sm_pat in $(printf '%s\n' "$2" | tr -d '\r' | sed 's/#.*//' | sed '/^[ \t]*$/d'); do
+      case "$sm_p" in $sm_pat) sm_hit=yes; break ;; esac
+    done
+    printf '%s\t%s\n' "$sm_hit" "$sm_p"
+  done)
+  set +f
+  sm_shared=$(printf '%s\n' "$sm_out" | awk -F'\t' '$1 == "yes" { print $2; exit }')
+  sm_other=$(printf '%s\n' "$sm_out" | awk -F'\t' '$1 == "no" { n++ } END { print n + 0 }')
+  if [ -n "$sm_shared" ] && [ "$sm_other" -gt 0 ]; then printf '%s\n' "$sm_shared"; fi
+  return 0
+}
+
 # has_crlf TEXT
 # Print "yes" when TEXT contains a carriage return, nothing otherwise.
 has_crlf() {
@@ -190,6 +215,16 @@ issue_refs() {
     }'
 }
 
+# ended_remote_branches REMOTE ENDED [DEFAULT]
+# REMOTE is one remote branch name per line; ENDED is the head branch of
+# each merged or closed pull request. Print the remote branches whose
+# pull request has ended, one per line, never the default branch.
+ended_remote_branches() {
+  printf '%s\n' "$1" | tr -d '\r' | awk -v ended="$2" -v def="${3:-main}" '
+    BEGIN { n = split(ended, e, "\n"); for (i = 1; i <= n; i++) { b = e[i]; gsub(/^[ \t]+|[ \t\r]+$/, "", b); if (b != "") done[b] = 1 } }
+    $0 != "" && $0 != def && ($0 in done) && !seen[$0]++ { print }'
+}
+
 # audit_comment MISSING STALE [RED]
 # MISSING is issue numbers one per line; STALE is "PR ISSUE" pairs one per
 # line; RED is the numbers of open red-main issues, one per line. Print the
@@ -198,7 +233,8 @@ audit_comment() {
   ac_missing=$(printf '%s\n' "$1" | sed '/^[ \t]*$/d')
   ac_stale=$(printf '%s\n' "$2" | sed '/^[ \t]*$/d')
   ac_red=$(printf '%s\n' "${3:-}" | sed '/^[ \t]*$/d')
-  [ -n "$ac_missing" ] || [ -n "$ac_stale" ] || [ -n "$ac_red" ] || return 0
+  ac_branches=$(printf '%s\n' "${4:-}" | sed '/^[ \t]*$/d')
+  [ -n "$ac_missing" ] || [ -n "$ac_stale" ] || [ -n "$ac_red" ] || [ -n "$ac_branches" ] || return 0
   ac_sep=""
   if [ -n "$ac_red" ]; then
     printf 'Main is red and the issue is still open:\n'
@@ -215,5 +251,16 @@ audit_comment() {
     printf "$ac_sep"
     printf 'Issues still open and labeled ready after their PR merged:\n'
     printf '%s\n' "$ac_stale" | awk '{ printf "- #%s (merged in #%s)\n", $2, $1 }'
+    ac_sep="\n"
+  fi
+  if [ -n "$ac_branches" ]; then
+    printf "$ac_sep"
+    printf '%s\n' "$ac_branches" | awk '
+      { b[NR] = $0 }
+      END {
+        printf "%d branch(es) are still on the remote after their pull request merged or closed. Their worktrees, if any, are leftovers; run sh scripts/worktrees.sh audit locally.\n", NR
+        for (i = 1; i <= NR && i <= 5; i++) printf "- %s\n", b[i]
+        if (NR > 5) printf "- and %d more\n", NR - 5
+      }'
   fi
 }

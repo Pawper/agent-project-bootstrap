@@ -93,6 +93,19 @@ jobs:
       - name: Fail when a setup file changed without SETUP.md
         run: sh scripts/ci/setup-check.sh "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}"
 
+  shared-check:
+    # A fix to shared code gets its own pull request. Passes when the list
+    # of shared paths is empty.
+    needs: classify
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fail when shared code is changed together with other work
+        run: sh scripts/ci/shared-check.sh "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}"
+
   line-endings:
     # Runs on every PR and every push: mixed endings make every diff a conflict.
     runs-on: ubuntu-latest
@@ -116,7 +129,7 @@ jobs:
     # per-class jobs in branch protection: they are skipped when a change does
     # not need them, and a required check that never reports blocks the merge.
     name: CI passed
-    needs: [classify, app, data, docs, spec-check, setup-check, line-endings, status-page]
+    needs: [classify, app, data, docs, spec-check, setup-check, shared-check, line-endings, status-page]
     if: always() && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
@@ -124,7 +137,7 @@ jobs:
         shell: sh
         run: |
           failed=0
-          for pair in "classify:${{ needs.classify.result }}" "app:${{ needs.app.result }}" "data:${{ needs.data.result }}" "docs:${{ needs.docs.result }}" "spec-check:${{ needs.spec-check.result }}" "setup-check:${{ needs.setup-check.result }}" "line-endings:${{ needs.line-endings.result }}" "status-page:${{ needs.status-page.result }}"; do
+          for pair in "classify:${{ needs.classify.result }}" "app:${{ needs.app.result }}" "data:${{ needs.data.result }}" "docs:${{ needs.docs.result }}" "spec-check:${{ needs.spec-check.result }}" "setup-check:${{ needs.setup-check.result }}" "shared-check:${{ needs.shared-check.result }}" "line-endings:${{ needs.line-endings.result }}" "status-page:${{ needs.status-page.result }}"; do
             job=${pair%%:*}
             result=${pair#*:}
             echo "$job: $result"
