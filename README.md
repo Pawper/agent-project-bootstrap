@@ -33,7 +33,7 @@ What never changes: one home per kind of thing, nothing appended to a shared pag
 | Piece | Where | What it does |
 |---|---|---|
 | The skill | `skills/project-bootstrap/SKILL.md` | The design: homes, rules, enforcement, CI from day one, and the outputs in order |
-| The hooks | `hooks/hooks.json`, `hooks/scripts/` | Six PreToolUse hooks that block the dangerous commands and the wasteful dispatches |
+| The hooks | `hooks/hooks.json`, `hooks/scripts/` | Seven PreToolUse hooks that block the dangerous commands, the wasteful dispatches and the slow merge pattern |
 | The templates | `templates/` | Issue template, CLAUDE.md and AGENTS.md, setup and notice skeletons, the status page and its scripts, the CI workflow, the merge queue, the board setup, the nightly audit |
 | The owner console | `console/`, sample in `templates/console/` | One page: what the project talks to, the state of each system, how to do the routine things |
 | The tests | `tests/run.sh` | One test per pure function in every script, plus the console's Node tests |
@@ -135,6 +135,8 @@ Every hook reads the tool call before it runs, and when it refuses, it prints on
 
 **Agents dispatched without a fitting model.** An `Agent` call with no `model`, or with a model heavier than its task needs, and a `Workflow` script with an `agent()` call that sets no model. Thirty agents each fanning out subagents on the heaviest model is the fastest way to spend a usage budget on lookups. The hook sorts the task by its type, description and prompt into a lookup (haiku), routine work (sonnet) or hard work (opus), and refuses when the model is missing or heavier than that. A lighter model than suggested is always allowed. Agents inherit the session's effort level and there is no per-agent effort setting, so the message reports the current effort and says to lower it before a long lookup.
 
+**The serial merge pattern.** `merge-queue.sh` with more than two pull request numbers and neither `--batch` nor `--serial`. One project merged seven pull requests one at a time, each with its own full browser run, in ninety minutes; thirteen went through one integration branch with scoped tests and one full run in twenty. Merging must never take longer than the development did, so the batch is the unit of merging. `--serial` is always allowed, because a migration or a risky change should land alone by choice, and two or fewer pull requests without a flag are allowed. The notes in `templates/scripts/ci/QUEUE.md` say when to batch and when not to.
+
 Sample of what a refusal looks like, from the delete hook:
 
 ```text
@@ -160,7 +162,7 @@ All of them live in `templates/` and are meant to be copied into the project roo
 - `console/services.json` and `.env.example`: the one file that drives the owner console, and the example env file the console check reads it against.
 - `scripts/ci/classes.txt`: which paths belong to which change class.
 - `scripts/ci/classify.sh`: prints the classes for a diff.
-- `scripts/ci/merge-queue.sh PR`: merges a green PR without a re-run when main moved only outside the PR's classes, or updates the branch so CI runs again when it moved inside them. Turn off "require branches to be up to date" in branch protection; this script is the queue.
+- `scripts/ci/merge-queue.sh --batch PR...`: the queue's default for more than two pull requests. Cuts an integration branch from main, merges each in order with a merge commit, runs the type-check and only the test files that pull request touched after each merge, drops one that conflicts or goes red with one printed line, rebuilds the status page, opens one pull request that closes every carried issue, waits for the one full run, merges it, then runs the serial queue for anything dropped. `--serial PR...` keeps the one-at-a-time behavior by choice: merge a green PR without a re-run when main moved only outside its classes, update the branch when it moved inside them. The pure parts are in `batch-lib.sh`; the one-file test runner is `run-test-file.mjs`; the notes are in `QUEUE.md`. Turn off "require branches to be up to date" in branch protection; this script is the queue.
 - `.github/workflows/ci.yml`: a classify job, one job per class that runs only when its class changed, the spec, setup and line-endings checks, a status page check on every run, a single summary job named `CI passed` that waits for whichever class jobs ran and reports once, the full suite on every push to main, and an issue labeled `ci-red` when that full run fails. No path filters on the workflow, so every update to a PR starts a run.
 - `scripts/labels.sh`: creates the seven `state:` labels plus `task`, `ci-red` and `audit`.
 - `scripts/board.sh OWNER OWNER/REPO`: creates the labels, the project board and its State field, and links the repository. With `--existing NUMBER` it adopts the board you already have instead of creating one.
@@ -295,7 +297,7 @@ ok    no overlap merges
 ok    overlap reruns
 ok    ci on main reruns
 
-140 passed, 0 failed
+200 passed, 0 failed
 ```
 
 ## License

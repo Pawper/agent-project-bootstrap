@@ -148,6 +148,36 @@ eq "a quoted label with a space but no state" "gh issue create" "$(state_label_r
 eq "gh issue list is fine" "" "$(state_label_reason 'gh issue list')"
 eq "create in a later command" "gh issue create" "$(state_label_reason 'git push && gh issue create -t x')"
 
+printf '\n# batch_merge_reason\n'
+eq "three PRs with no flag" "3" "$(batch_merge_reason 'sh scripts/ci/merge-queue.sh 41 42 45')"
+eq "three PRs with --batch" "" "$(batch_merge_reason 'sh scripts/ci/merge-queue.sh --batch 41 42 45')"
+eq "three PRs with --serial" "" "$(batch_merge_reason 'sh scripts/ci/merge-queue.sh --serial 41 42 45')"
+eq "two PRs with no flag" "" "$(batch_merge_reason 'sh scripts/ci/merge-queue.sh 41 42')"
+eq "one PR as before" "" "$(batch_merge_reason 'sh scripts/ci/merge-queue.sh 41 main')"
+eq "a chained serial run after cd" "4" "$(batch_merge_reason 'cd app && sh ./scripts/ci/merge-queue.sh 1 2 3 4')"
+eq "another script with numbers is fine" "" "$(batch_merge_reason 'sh scripts/other.sh 1 2 3')"
+
+printf '\n# batch helpers\n'
+. "$root/templates/scripts/ci/batch-lib.sh"
+eq "order kept, repeats dropped, words ignored" "41
+42
+45" "$(batch_order 41 42 41 x 45 | tr '\n' ' ' | sed 's/ $//' | tr ' ' '\n')"
+eq "test files from a diff" "tests/unit/a.test.ts
+src/b.spec.tsx" "$(tests_for_diff 'src/a.ts
+tests/unit/a.test.ts
+src/b.spec.tsx
+docs/x.md
+e2e/login.spec.ts
+tests/e2e/flow.test.ts')"
+eq "no test files, nothing" "" "$(tests_for_diff 'src/a.ts
+README.md')"
+eq "branch name for the day" "batch-2026-10-03" "$(batch_branch_name 2026-10-03)"
+eq "second batch of the day" "batch-2026-10-03-2" "$(batch_branch_name 2026-10-03 2)"
+eq "batch PR body" "- #41 Add retries. Closes #41
+- #45 Fix the parser. Closes #45" "$(batch_pr_body "$(printf '41\tAdd retries\n45\tFix the parser\n')" | tail -n 2)"
+eq "one line per PR" "#13 dropped: conflicts with the batch so far" "$(batch_line 13 dropped 'conflicts with the batch so far')"
+eq "one line without a reason" "#12 merged into the batch" "$(batch_line 12 'merged into the batch')"
+
 printf '\n# task_tier and agent_model_reason\n'
 eq "Explore is a lookup" "lookup" "$(task_tier Explore 'Find config' 'Find where the port is set')"
 eq "Plan is hard" "hard" "$(task_tier Plan 'Plan it' 'Plan the cache')"
