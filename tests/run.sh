@@ -233,9 +233,80 @@ eq "worktrees counted with their folders" "Worktrees: 4 besides the main checkou
 eq "only the main checkout, nothing said" "" "$(worktree_summary 'worktree /repo
 branch refs/heads/main')"
 
+printf '\n# clean endings (hook library)\n'
+. "$root/hooks/scripts/worktree-lib.sh"
+status=' M scripts/upload.sh
+?? tests/admin.test.ts
+?? .scratch/probe.mjs
+?? shots/a.png
+?? shots/b.JPG
+R  old.md -> docs/new.md'
+eq "dirty files outside the scratch folder" "scripts/upload.sh
+tests/admin.test.ts
+shots/a.png
+shots/b.JPG
+docs/new.md" "$(dirty_non_scratch "$status")"
+eq "only scratch is clean" "" "$(dirty_non_scratch '?? .scratch/notes.md
+?? .scratch/')"
+eq "a clean tree is clean" "" "$(dirty_non_scratch '')"
+eq "images and build output counted" "3" "$(stray_media 'shots/a.png
+shots/b.JPG
+src/a.ts
+dist/')"
+eq "no media, zero" "0" "$(stray_media 'src/a.ts')"
+eq "processes started from the folder" "412	node C:\\Users\\me\\wt\\task\\node_modules\\next\\dist\\bin\\next start" "$(procs_in_dir "$(printf '412\tnode C:\\Users\\me\\wt\\task\\node_modules\\next\\dist\\bin\\next start\n77\tnode D:/other/server.js\n90\tsh C:/Users/me/wt/task/../hooks/scripts/session-brief.sh\n')" 'C:/Users/me/wt/task')"
+eq "no process in the folder" "" "$(procs_in_dir "$(printf '77\tnode D:/other/server.js\n')" '/home/me/wt/task')"
+eq "closing a PR with no comment" "gh pr close" "$(pr_close_reason 'gh pr close 41')"
+eq "closing with a comment is fine" "" "$(pr_close_reason 'gh pr close 41 --comment "replaced by #52"')"
+eq "closing with -c is fine" "" "$(pr_close_reason 'gh pr close 41 -c "duplicate of #40"')"
+eq "viewing a PR is fine" "" "$(pr_close_reason 'gh pr view 41')"
+eq "a detached worktree" "detached" "$(worktree_add_reason 'git worktree add --detach ../wt/x HEAD')"
+eq "a worktree with a branch is fine" "" "$(worktree_add_reason 'git worktree add -b task-x ../wt/x')"
+eq "git branch -d is not a worktree add" "" "$(worktree_add_reason 'git branch -d old')"
+wtpairs=$(printf '/w/a\tretries\n/w/b\tparser\n/w/c\trename\n/w/d\t\n')
+eq "stale and detached worktrees counted" "1	1" "$(stale_worktrees "$wtpairs" 'retries' "$(printf 'retries\t1000000\nparser\t1000000\nrename\t1900000\n')" 2000000 3)"
+
 printf '\n# worktrees\n'
 . "$root/templates/scripts/worktrees-lib.sh"
 pairs=$(worktree_branches "$porcelain")
+eq "the worktree of a branch" "C:/Users/me/Documents/GitHub/app-parser" "$(worktree_for_branch "$pairs" parser)"
+eq "no worktree for a branch" "" "$(worktree_for_branch "$pairs" nothing)"
+eq "detached worktrees named" "C:/Users/me/Documents/GitHub/app/.claude/worktrees/loose" "$(detached_worktrees "$pairs")"
+ends=$(printf 'merged\tretries\nclosed\tparser\nmerged\tgone\n')
+eq "merged heads from ended pull requests" "retries
+gone" "$(pr_ends "$ends" merged)"
+eq "closed heads from ended pull requests" "parser" "$(pr_ends "$ends" closed)"
+eq "merged local branches with no worktree" "old-fix" "$(mergeable_local_branches 'main
+retries
+old-fix
+wip' 'main
+retries
+old-fix' "$pairs" main)"
+eq "the queue's folder test matches the hook's" "scripts/upload.sh" "$(dirty_non_scratch ' M scripts/upload.sh
+?? .scratch/x')"
+
+printf '\n# shared code and ended branches\n'
+shared='# comment
+scripts/build/*
+src/lib/*'
+eq "shared code mixed with other work" "scripts/build/pack.mjs" "$(shared_mix_reason 'scripts/build/pack.mjs
+packs/durer/index.json' "$shared")"
+eq "only shared code is fine" "" "$(shared_mix_reason 'scripts/build/pack.mjs
+src/lib/a.ts' "$shared")"
+eq "no shared code is fine" "" "$(shared_mix_reason 'packs/durer/index.json' "$shared")"
+eq "an empty list never fails" "" "$(shared_mix_reason 'scripts/build/pack.mjs
+packs/x' '# nothing listed')"
+eq "remote branches whose pull request ended" "retries
+parser" "$(ended_remote_branches 'main
+retries
+parser
+wip' 'retries
+parser
+main')"
+eq "the audit counts ended branches" "2 branch(es) are still on the remote after their pull request merged or closed. Their worktrees, if any, are leftovers; run sh scripts/worktrees.sh audit locally.
+- retries
+- parser" "$(audit_comment '' '' '' 'retries
+parser')"
 eq "path and branch per worktree, main left out" "C:/Users/me/Documents/GitHub/app-retries	retries
 C:/Users/me/Documents/GitHub/app-parser	parser
 C:/Users/me/Documents/GitHub/app/.claude/worktrees/rename	rename

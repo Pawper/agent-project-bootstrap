@@ -108,8 +108,25 @@ if has leftover && [ "$have_git" = yes ]; then
   refs=$(git for-each-ref --format="%(refname:short)%09%(ahead-behind:$default)" refs/heads 2>/dev/null) || refs=""
   left=$(leftover_summary "$refs" 5)
   [ -n "$left" ] && add "$left"
-  wt=$(worktree_summary "$(git worktree list --porcelain 2>/dev/null)")
+  porcelain=$(git worktree list --porcelain 2>/dev/null)
+  wt=$(worktree_summary "$porcelain")
   [ -n "$wt" ] && add "$wt"
+  # The local half of the audit: worktrees with no open pull request and no
+  # recent commit, and detached ones. Local git plus the facts already read.
+  if [ -n "$wt" ]; then
+    . "$here/worktree-lib.sh"
+    pairs=$(printf '%s\n' "$porcelain" | tr -d '\r' | awk '
+      /^worktree / { if (n > 1) print path "\t" branch; n++; path = substr($0, 10); branch = "" }
+      /^branch / { branch = substr($0, 8); sub(/^refs\/heads\//, "", branch) }
+      END { if (n > 1) print path "\t" branch }')
+    heads=$(printf '%s\n' "$facts" | awk -F'\t' '$1 == "pr" { print $6 }')
+    dates=$(git for-each-ref --format='%(refname:short)%09%(committerdate:unix)' refs/heads 2>/dev/null)
+    sd=$(stale_worktrees "$pairs" "$heads" "$dates" "$(date +%s)" 3)
+    stale=${sd%%	*}; detached=${sd##*	}
+    if [ "${stale:-0}" -gt 0 ] || [ "${detached:-0}" -gt 0 ]; then
+      add "Of those, $stale have no open pull request and no commit in 3 days, and $detached are detached. Name them with: sh scripts/worktrees.sh audit"
+    fi
+  fi
 fi
 
 # Last handoff

@@ -1,5 +1,5 @@
 {
-  "description": "Enforces the project-bootstrap rules: no deletes, no forced pushes, no full test sweeps, no direct edits to generated pages, no issue filed without a State label, no agent dispatched without a fitting model, no serial merge of more than two pull requests without a named mode; and prints the project's live state and the drive's proposal at session start.",
+  "description": "Enforces the project-bootstrap rules: no deletes, no forced pushes, no full test sweeps, no direct edits to generated pages, no issue filed without a State label, no agent dispatched without a fitting model, no serial merge of more than two pull requests without a named mode, no pull request closed without a comment, no detached worktree; refuses to finish a task in a worktree that is not clean; and prints the project's live state and the drive's proposal at session start.",
   "hooks": {
     "SessionStart": [
       {
@@ -14,10 +14,40 @@
         ]
       }
     ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/require-clean-worktree.sh\"",
+            "timeout": 20,
+            "statusMessage": "Checking the worktree is clean"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/require-clean-worktree.sh\"",
+            "timeout": 20,
+            "statusMessage": "Checking the worktree is clean"
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash",
         "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/block-loose-ends.sh\"",
+            "timeout": 10,
+            "statusMessage": "Checking for a loose end"
+          },
           {
             "type": "command",
             "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/block-delete.sh\"",
