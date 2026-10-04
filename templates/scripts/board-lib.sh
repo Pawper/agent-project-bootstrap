@@ -6,7 +6,7 @@
 here_lib=$(dirname "$0")
 . "$here_lib/ci/lib.sh"
 
-ALL_STATE_LABELS="state:ready state:in-progress state:waiting-on-owner state:waiting-on-service state:parked state:dated state:after-launch"
+ALL_STATE_LABELS="state:ready state:in-progress state:waiting-on-owner state:waiting-on-service state:parked state:dated state:after-launch state:blocked"
 
 # board_load PROJECT OWNER
 # Reads the ids the other functions need into BOARD_* variables.

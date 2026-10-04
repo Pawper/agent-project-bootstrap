@@ -204,7 +204,72 @@ b
 c
 d' 2)"
 eq "a clear prints the short form" "main inprogress" "$(brief_sections clear)"
-eq "a startup prints everything" "main prs queue inprogress handoff owner" "$(brief_sections startup)"
+eq "a startup prints everything" "main prs queue inprogress handoff owner proposal" "$(brief_sections startup)"
+
+printf '\n# project drive\n'
+. "$root/scripts/drive/drive-lib.sh"
+snap=$(cat "$fx/drive-snapshot.tsv")
+eq "a full proposal, in order" "merge-batch 41 42 45 46
+fix-pr 47	Broken build
+ask-owner 13	Set the price of the plan
+dispatch 12	Add the exporter
+defer 2 ready issue(s): no free runner this round
+fix-main 77
+audit Open issues with no State label: #33
+restart-queue
+stop: proposal ready for approval" "$(propose_round "$snap" 2 4)"
+eq "two green PRs merge one by one" "merge 41
+merge 42
+stop: proposal ready for approval" "$(propose_round 'pr	41	A	green	mergeable	app
+pr	42	B	green	mergeable	app' 2 4)"
+eq "three green but only two app PRs merge one by one" "merge 41
+merge 42
+merge 46
+stop: proposal ready for approval" "$(propose_round 'pr	41	A	green	mergeable	app
+pr	42	B	green	mergeable	app
+pr	46	Docs	green	mergeable	other' 2 4)"
+eq "more runners, more starts, within the agent budget" "dispatch 12	Add the exporter
+dispatch 14	Fix the date format
+dispatch 15	Rework the search
+stop: proposal ready for approval" "$(propose_round 'issue	12	Add the exporter	ready	no
+issue	14	Fix the date format	ready	no
+issue	15	Rework the search	ready	no' 4 3)"
+eq "nothing to propose stops" "stop: nothing to propose" "$(propose_round 'queue	none' 2 4)"
+eq "only owner waits stops with the reason" "stop: everything left waits on a person" "$(propose_round 'issue	30	Logo	waiting-on-owner	no' 2 4)"
+eq "work in flight stops with the reason" "stop: work is in flight; nothing to propose until it lands" "$(propose_round 'pr	48	Running	pending	mergeable	app
+issue	20	Billing	in-progress	no' 2 4)"
+eq "a conflicting green PR is not proposed for merge" "stop: work is in flight; nothing to propose until it lands" "$(propose_round 'pr	49	Old	green	conflicting	app' 2 4)"
+eq "proposal numbered, defer and stop unnumbered" "$(cat "$fx/drive-proposal.txt")" "$(number_proposal "$(propose_round "$snap" 2 4)")"
+numbered=$(cat "$fx/drive-proposal.txt")
+eq "approve a list" "merge-batch 41 42 45 46
+dispatch 12	Add the exporter" "$(approved_goals "$numbered" '1, 4')"
+eq "approve all" "7" "$(approved_goals "$numbered" 'all' | wc -l | tr -d ' ')"
+eq "approve all but some" "merge-batch 41 42 45 46
+dispatch 12	Add the exporter
+fix-main 77
+audit Open issues with no State label: #33
+restart-queue" "$(approved_goals "$numbered" 'All but 2 3')"
+eq "approve none" "" "$(approved_goals "$numbered" 'none')"
+eq "a reply that names nothing approves nothing" "" "$(approved_goals "$numbered" 'looks good')"
+eq "queue stale: old and unfinished" "yes" "$(queue_is_stale 1000000 1010000 'merging PR 41')"
+eq "queue not stale: old but finished" "no" "$(queue_is_stale 1000000 1010000 'queue done')"
+eq "queue not stale: recent" "no" "$(queue_is_stale 1000000 1003000 'merging PR 41')"
+eq "queue not stale: no log" "no" "$(queue_is_stale '' 1000000 '')"
+eq "owner decision found" "prices" "$(owner_decision_hit 'Set the Prices for the yearly plan' 'prices
+policy')"
+eq "owner decision absent" "" "$(owner_decision_hit 'Fix the date parser' 'prices
+policy')"
+eq "report trimmed per section" "Merged:
+#1
+#2
+(and 1 more)
+Blocked:
+#9 on the owner" "$(trim_report 'Merged:
+#1
+#2
+#3
+Blocked:
+#9 on the owner' 2)"
 
 printf '\n# task_tier and agent_model_reason\n'
 eq "Explore is a lookup" "lookup" "$(task_tier Explore 'Find config' 'Find where the port is set')"

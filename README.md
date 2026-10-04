@@ -36,6 +36,7 @@ What never changes: one home per kind of thing, nothing appended to a shared pag
 | The hooks | `hooks/hooks.json`, `hooks/scripts/` | Seven PreToolUse hooks that block the dangerous commands, the wasteful dispatches and the slow merge pattern, and one SessionStart hook that prints the project's live state |
 | The templates | `templates/` | Issue template, CLAUDE.md and AGENTS.md, setup and notice skeletons, the status page and its scripts, the CI workflow, the merge queue, the board setup, the nightly audit |
 | The owner console | `console/`, sample in `templates/console/` | One page: what the project talks to, the state of each system, how to do the routine things |
+| The drive skill | `skills/project-drive/SKILL.md`, `scripts/drive/` | One round: read the board and the checks, propose what to do next, pursue only what a person approved |
 | The tests | `tests/run.sh` | One test per pure function in every script, plus the console's Node tests |
 
 ## Install
@@ -165,11 +166,12 @@ All of them live in `templates/` and are meant to be copied into the project roo
 - `scripts/ci/line-endings.sh` and `.gitattributes`: the attributes file forces LF everywhere; the check fails on any tracked text file that still has CRLF.
 - `console/services.json` and `.env.example`: the one file that drives the owner console, and the example env file the console check reads it against.
 - `.claude/session-brief.json`: where the merge queue logs live, where the agent's memory folder is, and how many lines the session brief may print. Commented in the file itself.
+- `.claude/project-drive.json`: runners, the agent and minute budgets per drive round, the queue log glob, and the owner decisions list. Commented in the file itself.
 - `scripts/ci/classes.txt`: which paths belong to which change class.
 - `scripts/ci/classify.sh`: prints the classes for a diff.
 - `scripts/ci/merge-queue.sh --batch PR...`: the queue's default for more than two pull requests. Cuts an integration branch from main, merges each in order with a merge commit, runs the type-check and only the test files that pull request touched after each merge, drops one that conflicts or goes red with one printed line, rebuilds the status page, opens one pull request that closes every carried issue, waits for the one full run, merges it, then runs the serial queue for anything dropped. `--serial PR...` keeps the one-at-a-time behavior by choice: merge a green PR without a re-run when main moved only outside its classes, update the branch when it moved inside them. The pure parts are in `batch-lib.sh`; the one-file test runner is `run-test-file.mjs`; the notes are in `QUEUE.md`. Turn off "require branches to be up to date" in branch protection; this script is the queue.
 - `.github/workflows/ci.yml`: a classify job, one job per class that runs only when its class changed, the spec, setup and line-endings checks, a status page check on every run, a single summary job named `CI passed` that waits for whichever class jobs ran and reports once, the full suite on every push to main, and an issue labeled `ci-red` when that full run fails. No path filters on the workflow, so every update to a PR starts a run.
-- `scripts/labels.sh`: creates the seven `state:` labels plus `task`, `ci-red` and `audit`.
+- `scripts/labels.sh`: creates the eight `state:` labels plus `task`, `ci-red`, `audit` and `drive`.
 - `scripts/board.sh OWNER OWNER/REPO`: creates the labels, the project board and its State field, and links the repository. With `--existing NUMBER` it adopts the board you already have instead of creating one.
 - `scripts/state.sh PROJECT OWNER ISSUE "Ready"`: sets an issue's state in one go, the state label, the board's State field and the mirrored built-in Status, so the coordinator runs one command when filing and the three never disagree.
 - `scripts/board-sync.sh PROJECT OWNER [--dry-run]`: makes label, State and Status agree for every issue, open and closed. The label is the source of truth when present, the board's State otherwise; closed issues get Status Done; an issue with neither is left for the audit to report.
@@ -230,6 +232,16 @@ app.get('/owner', requireOwner, owner.handler);
 
 The sample configuration under `templates/console/` and the matching `templates/.env.example` are the fixture for the tests, so the sample stays valid as the code changes. The screenshot above was made from that sample with a few settings present.
 
+## The drive: propose, approve, pursue
+
+The plugin enforces rules and reports drift, and the owner console shows the state. The drive is what moves a project between sessions, and it moves it only where a person said to.
+
+There is no goals list. The board and the checks are the goal: an issue labeled ready is work that could start, a green pull request is work that could land, a red one is work that needs fixing, an audit comment is a record that drifted. One round of `/project-drive` reads that state and writes a numbered proposal: land these, fix that, start these two, ask the owner about this one, set this record right, restart the stuck queue. Then it stops. In a session it asks with the question tool; overnight it posts the proposal as a comment on the issue labeled `drive` and ends. A person answers with the numbers to approve, or all, or none. The next round pursues the approved goals and nothing else, with three moves for a hangup: fix a fixable blocker within scope, ask a person for a decision that is theirs and move on, file a new issue for work outside the goal's words. It reports in one block on the drive issue. The loop is the timer; the proposal is the ask; the audit is the check without the work; a person is interrupted for an approval and for a decision, never for a status report.
+
+The session brief ends with the same proposal when a project has a drive config, under "Proposed next (nothing runs until you approve)," so every session opens with the state and the ask.
+
+To run it: `/loop 10m /project-drive` in a session while work is in flight, `/loop 1h /project-drive` when everything waits on a person, or a scheduled session that runs `claude -p "/project-drive"` in the project folder overnight. A timed wake costs tokens even when nothing changed; the first step is cheap on purpose. The plan script is always dry: `sh "$CLAUDE_PLUGIN_ROOT/scripts/drive/plan.sh" --snapshot` prints the facts and the proposal and does nothing. The config is `.claude/project-drive.json`: runners, the agent and minute budgets per round, the queue log glob, and the owner's list of what is always theirs.
+
 ## Branch protection on main
 
 Branch protection is set by hand in the repository's settings, under Branches. GitHub asks the owner to confirm their access before it saves the rule. Set it like this:
@@ -240,7 +252,7 @@ Branch protection is set by hand in the repository's settings, under Branches. G
 
 ## The project board
 
-`scripts/board.sh` creates the board and a single-select field named State with seven values: `Ready`, `In progress`, `Waiting on owner`, `Waiting on a service`, `Parked`, `Dated`, `After launch`. The issue template's dropdown has the same seven, the `state-label` workflow turns the chosen one into the matching `state:` label (`state:ready`, `state:in-progress`, `state:waiting-on-owner`, `state:waiting-on-service`, `state:parked`, `state:dated`, `state:after-launch`), and the filing hook refuses an issue without one. Group the board view by State; that view is the status report, and nobody writes one.
+`scripts/board.sh` creates the board and a single-select field named State with eight values: `Ready`, `In progress`, `Waiting on owner`, `Waiting on a service`, `Parked`, `Dated`, `After launch`, `Blocked`. The issue template's dropdown has the same eight, the `state-label` workflow turns the chosen one into the matching `state:` label (`state:ready` through `state:blocked`), and the filing hook refuses an issue without one. `Blocked` is the state the drive sets when a pull request is red for a cause outside its own scope; the comment says what. Group the board view by State; that view is the status report, and nobody writes one.
 
 The built-in workflows act on the board's own Status field, and the API cannot switch them on. After the script runs, open the board, choose the Workflows tab, and turn on these four by hand:
 
@@ -302,7 +314,7 @@ ok    no overlap merges
 ok    overlap reruns
 ok    ci on main reruns
 
-216 passed, 0 failed
+237 passed, 0 failed
 ```
 
 ## License

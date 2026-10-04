@@ -5,3 +5,4 @@ tests/*.unused
 .env
 .tmp-brief/
 .claude/session-brief.json
+.claude/project-drive.json*
