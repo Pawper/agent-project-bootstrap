@@ -6,3 +6,4 @@ tests/*.unused
 .tmp-brief/
 .claude/session-brief.json
 .claude/project-drive.json*
+assets/icon.html
