@@ -233,6 +233,40 @@ eq "worktrees counted with their folders" "Worktrees: 4 besides the main checkou
 eq "only the main checkout, nothing said" "" "$(worktree_summary 'worktree /repo
 branch refs/heads/main')"
 
+printf '\n# board digest\n'
+. "$root/scripts/board/board-lib.sh"
+dfacts=$(cat "$fx/board-facts-dated.tsv")
+ddigest=$(cat "$fx/board-digest.tsv")
+eq "open items with their last-updated time" "41	pr	2026-10-04T10:00:00Z	Add retries
+12	issue	2026-10-03T09:00:00Z	Add the exporter" "$(open_items "$dfacts" | head -n 2)"
+eq "only items with a missing or older summary are changed" "12	issue
+30	issue" "$(changed_items "$dfacts" "$ddigest")"
+eq "with no digest everything is changed" "6" "$(changed_items "$dfacts" '' | wc -l | tr -d ' ')"
+eq "freshness counts current over open" "4	6" "$(digest_freshness "$dfacts" "$ddigest")"
+merged=$(merge_digest "$ddigest" '12 | Agent | start the exporter | - | Ready to build; nothing decided yet.
+30 | agent | use option B | - | The owner chose B.
+77 | agent | not open | - | Should be ignored.
+garbage line' "$dfacts")
+eq "merge keeps open items, replaces the re-read, drops the closed" "6" "$(printf '%s\n' "$merged" | wc -l | tr -d ' ')"
+eq "a re-read item is stamped with its current time" "30	issue	2026-10-04T11:30:00Z	agent	use option B	-	The owner chose B." "$(printf '%s\n' "$merged" | grep '^30	')"
+eq "a new item is added with its kind and time" "12	issue	2026-10-03T09:00:00Z	agent	start the exporter	-	Ready to build; nothing decided yet." "$(printf '%s\n' "$merged" | grep '^12	')"
+eq "a closed item drops out and an unknown one is ignored" "" "$(printf '%s\n' "$merged" | grep -E '^(99|77)	')"
+eq "after the merge everything is current" "6	6" "$(digest_freshness "$dfacts" "$merged")"
+eq "batches of paths for readers" "a b
+c" "$(batch_paths 'a
+b
+c' 2)"
+eq "the brief's lines: who has the ball, owner first" "#30 Choose the logo: ball owner; next owner picks a logo (changed since)
+#31 Pick the price: ball agent; next set the price to 48 and continue
+#40 Mail is bouncing: ball service; next wait for the mail provider; blocked by the provider's outage
+#20 Billing: ball owner; next owner picks monthly or yearly first
+#41 Add retries: ball reviewer; next review and merge" "$(digest_brief_lines "$dfacts" "$ddigest" 8)"
+eq "the brief's lines are counted past the limit" "#30 Choose the logo: ball owner; next owner picks a logo (changed since)
+(and 4 more in the digest)" "$(digest_brief_lines "$dfacts" "$ddigest" 1)"
+eq "goals labels alone would miss, from current summaries only" "mark-waiting 20	Billing (a question to the owner is open)
+set-ready 31	Pick the price (the owner answered)" "$(digest_goals "$dfacts" "$ddigest")"
+eq "no digest, no extra goals" "" "$(digest_goals "$dfacts" '')"
+
 printf '\n# clean endings (hook library)\n'
 . "$root/hooks/scripts/worktree-lib.sh"
 status=' M scripts/upload.sh
