@@ -4,10 +4,13 @@
 # The skill posts the proposal and, once approved, pursues it.
 #
 # Usage, from the project root:
-#   sh "$CLAUDE_PLUGIN_ROOT/scripts/drive/plan.sh" [--dry-run] [--snapshot]
+#   sh "$CLAUDE_PLUGIN_ROOT/scripts/drive/plan.sh" [--dry-run] [--snapshot] [--fast] [--facts FILE]
 # --dry-run is accepted and changes nothing: this script is always dry.
 # --snapshot also prints the raw facts the proposal was made from.
+# --facts FILE reuses facts already fetched by board-now.sh.
+# --fast skips the one extra call for the audit issue's latest comment.
 #
+# The whole board comes from one GraphQL call (hooks/scripts/board-now.sh).
 # Reads .claude/project-drive.json when present: runners (default 2),
 # maxAgents (4), maxMinutes (90), queueLogGlob, ownerDecisions.
 here=$(dirname "$0")
@@ -15,8 +18,15 @@ here=$(dirname "$0")
 . "$here/../../hooks/scripts/session-brief-lib.sh"
 . "$here/drive-lib.sh"
 
-show_snapshot=no
-for a in "$@"; do case "$a" in --snapshot) show_snapshot=yes ;; esac; done
+show_snapshot=no; fast=no; facts_file=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --snapshot) show_snapshot=yes ;;
+    --fast) fast=yes ;;
+    --facts) shift; facts_file=$1 ;;
+  esac
+  shift
+done
 
 runners=2; max_agents=4; max_minutes=90; queue_glob=""; owner_phrases=""
 if [ -f .claude/project-drive.json ]; then
@@ -29,57 +39,58 @@ if [ -f .claude/project-drive.json ]; then
     | tr ',' '\n' | sed 's/^[ \t"]*//;s/[ \t"]*$//' | sed '/^$/d')
 fi
 
-if ! command -v gh >/dev/null 2>&1 || ! gh auth status >/dev/null 2>&1; then
+if [ -n "$facts_file" ] && [ -f "$facts_file" ]; then
+  facts=$(cat "$facts_file")
+else
+  facts=$(sh "$here/../../hooks/scripts/board-now.sh" 2>/dev/null) || facts=""
+fi
+if [ -z "$facts" ]; then
   echo "gh is not available or not signed in; the round cannot read the project."
   echo "stop: unavailable"
   exit 0
 fi
 
-tmp=$(mktemp)
+rules=""
+[ -f scripts/ci/classes.txt ] && [ -f scripts/ci/lib.sh ] && rules=$(cat scripts/ci/classes.txt)
 tab=$(printf '\t')
+tmp=$(mktemp)
 
-# Pull requests: CI state, mergeability, class from the files they touch.
-gh pr list --limit 10 --json number,title,mergeable,statusCheckRollup --jq '
-  .[] | [
-    .number, .title, (.mergeable | ascii_downcase),
-    ([.statusCheckRollup[]? | select((.conclusion // "") | test("FAILURE|TIMED_OUT|CANCELLED|ACTION_REQUIRED")) ] | length)
-      + ([.statusCheckRollup[]? | select((.state // "") | test("FAILURE|ERROR"))] | length),
-    ([.statusCheckRollup[]? | select((.conclusion == null or .conclusion == "") and (.state == null or .state == "PENDING" or .state == "EXPECTED"))] | length),
-    ([.statusCheckRollup[]?] | length)
-  ] | @tsv' 2>/dev/null | while IFS="$tab" read -r num title merge failed pending total; do
-  [ -n "$num" ] || continue
-  if [ "${failed:-0}" -gt 0 ]; then ci=red
-  elif [ "${pending:-0}" -gt 0 ] || [ "${total:-0}" -eq 0 ]; then ci=pending
-  else ci=green; fi
-  class=app
-  if [ -f scripts/ci/classes.txt ] && [ -f scripts/ci/lib.sh ]; then
-    cls=$(sh -c '. scripts/ci/lib.sh; classify_paths "$1" "$(cat scripts/ci/classes.txt)"' sh "$(gh pr diff "$num" --name-only 2>/dev/null)")
-    case " $cls " in *" app "*|*" other "*|*" tests "*|*" data "*) class=app ;; *) class=other ;; esac
+# Turn the facts into a snapshot, with no further network calls.
+printf '%s\n' "$facts" | while IFS="$tab" read -r kind num title a b c d; do
+  case "$kind" in
+    pr)
+      case "$a" in SUCCESS) ci=green ;; FAILURE|ERROR) ci=red ;; *) ci=pending ;; esac
+      merge=$(printf '%s' "$b" | tr 'A-Z' 'a-z')
+      class=app
+      if [ -n "$rules" ]; then
+        cls=$(sh -c '. scripts/ci/lib.sh; classify_paths "$1" "$2"' sh "$(printf '%s' "$d" | tr ',' '\n')" "$rules")
+        case " $cls " in *" app "*|*" other "*|*" tests "*|*" data "*) class=app ;; *) class=other ;; esac
+      fi
+      printf 'pr\t%s\t%s\t%s\t%s\t%s\n' "$num" "$title" "$ci" "$merge" "$class"
+      ;;
+    issue)
+      state=$(state_of_labels "$a")
+      case ",$a," in *",ci-red,"*) printf 'red\t%s\n' "$num" ;; esac
+      case "$state" in
+        ready)
+          owner=no
+          if [ -n "$owner_phrases" ] && [ -n "$(owner_decision_hit "$title" "$owner_phrases")" ]; then owner=yes; fi
+          printf 'issue\t%s\t%s\tready\t%s\n' "$num" "$title" "$owner" ;;
+        in-progress|waiting-on-owner|blocked)
+          printf 'issue\t%s\t%s\t%s\tno\n' "$num" "$title" "$state" ;;
+      esac
+      ;;
+  esac
+done >> "$tmp"
+
+# The audit issue's latest comment: one extra call, skipped with --fast.
+if [ "$fast" = no ]; then
+  audit_issue=$(printf '%s\n' "$facts" | awk -F'\t' '$1 == "issue" && ("," $4 ",") ~ /,audit,/ { print $2; exit }')
+  if [ -n "$audit_issue" ]; then
+    last=$(gh issue view "$audit_issue" --json comments --jq '.comments[-1].body // ""' 2>/dev/null | tr '\n' ' ' | cut -c1-200)
+    [ -n "$last" ] && printf 'audit\t%s\n' "$last" >> "$tmp"
   fi
-  printf 'pr\t%s\t%s\t%s\t%s\t%s\n' "$num" "$title" "$ci" "$merge" "$class"
-done >> "$tmp"
-
-# Issues by state, both label spellings, de-duplicated by number.
-issues_with() {
-  { gh issue list --label "$1" --limit 20 --json number,title,body --jq '.[] | [.number, .title, (.body // "" | gsub("[\\n\\t]"; " "))] | @tsv' 2>/dev/null
-    gh issue list --label "$2" --limit 20 --json number,title,body --jq '.[] | [.number, .title, (.body // "" | gsub("[\\n\\t]"; " "))] | @tsv' 2>/dev/null; } | awk -F'\t' '!seen[$1]++'
-}
-issues_with "state:ready" "state: ready" | while IFS="$tab" read -r num title body; do
-  [ -n "$num" ] || continue
-  owner=no
-  if [ -n "$owner_phrases" ] && [ -n "$(owner_decision_hit "$title $body" "$owner_phrases")" ]; then owner=yes; fi
-  printf 'issue\t%s\t%s\tready\t%s\n' "$num" "$title" "$owner"
-done >> "$tmp"
-issues_with "state:in-progress" "state: in progress" | awk -F'\t' '{ printf "issue\t%s\t%s\tin-progress\tno\n", $1, $2 }' >> "$tmp"
-issues_with "state:waiting-on-owner" "state: waiting on owner" | awk -F'\t' '{ printf "issue\t%s\t%s\twaiting-on-owner\tno\n", $1, $2 }' >> "$tmp"
-
-# The audit issue's latest comment, red-main issues, the queue.
-audit_issue=$(gh issue list --label audit --state open --limit 1 --json number --jq '.[0].number' 2>/dev/null)
-if [ -n "$audit_issue" ]; then
-  last=$(gh issue view "$audit_issue" --json comments --jq '.comments[-1].body // ""' 2>/dev/null | tr '\n' ' ' | cut -c1-200)
-  [ -n "$last" ] && printf 'audit\t%s\n' "$last" >> "$tmp"
 fi
-for n in $(gh issue list --label ci-red --state open --limit 5 --json number --jq '.[].number' 2>/dev/null); do printf 'red\t%s\n' "$n" >> "$tmp"; done
 
 queue_state=none
 if [ -n "$queue_glob" ]; then

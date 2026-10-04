@@ -67,6 +67,7 @@ Write these into the project's CLAUDE.md (and AGENTS.md as a copy for other tool
 | The manual | One setup document: configuration, keys by name, migrations run | anything that changes per feature |
 | Design | A spec folder per feature, with a constitution written once and a spec file per feature, written before building (by hand, or with GitHub's spec-kit if the project wants a generator) | design notes in issues only |
 | Credit for borrowed code or content | One short notice file, like any license notice | per-item narrative |
+| Worktrees | One folder, named in CLAUDE.md, each removed when its pull request merges | scattered as siblings of the repository, kept after the merge |
 
 ## 2. Rules for every agent
 
@@ -76,6 +77,8 @@ Write these into the project's CLAUDE.md (and AGENTS.md as a copy for other tool
 - Everything a person sees is calm and plain, never a developer note (no issue numbers, fields, migrations).
 - Report what was not done and why, not only what was. Say which commands were refused.
 - No wait loops; bounded commands; stop every shell when done.
+- At session start, reply from the session brief. Never run one network call per branch, worktree or issue in the foreground; the whole board is one call. Count long lists, do not print them.
+- Worktrees live in one folder and go when their pull request merges. Removing the worktree of a merged branch is the one cleanup allowed, through the worktree script, because the branch keeps the work.
 - Dispatch an agent with a model that fits its task: a light model for a lookup, a middle one for routine work, a heavy one only for hard work.
 
 ## 3. Enforcement: for every rule, what checks it
@@ -205,6 +208,7 @@ are ready to copy from `${CLAUDE_PLUGIN_ROOT}/templates/`:
 - Step 6: nothing in the plugin; it lives outside the repo, so create it by hand and name its path in CLAUDE.md
 - Step 7: `specs/constitution.md` and `specs/FEATURE/spec.md`, checked by `scripts/ci/spec-check.sh`
 - Step 8: `console/services.json` and `.env.example`; the page itself comes from the plugin's `console/` and needs no copy
+- Step 4 also: `scripts/worktrees.sh` and `scripts/worktrees-lib.sh`, which the merge queue calls to remove a merged branch's worktree
 - Step 9: `.claude/session-brief.json`; the hook comes from the plugin
 - Step 10: `.claude/project-drive.json`; the skill and its scripts come from the plugin; the drive issue is filed with `gh issue create --title Drive --label drive,state:parked`
 

@@ -77,12 +77,22 @@ serial_one() {
     batch_line "$pr" "updated" "main moved in its classes (PR: ${pr_classes:-none}; main: ${main_classes:-none}), CI runs again"
     return 0
   fi
+  head_branch=$(gh pr view "$pr" --json headRefName -q .headRefName 2>/dev/null || true)
   gh pr merge "$pr" --squash >/dev/null
   batch_line "$pr" "merged serially" "main moved only outside its classes"
+  tidy_worktree "$head_branch"
+}
+
+# tidy_worktree BRANCH: remove the worktree of a branch that just merged,
+# when it is clean. The branch itself is kept. Quiet when there is none.
+tidy_worktree() {
+  [ -n "$1" ] && [ -f "$here/../worktrees.sh" ] || return 0
+  sh "$here/../worktrees.sh" prune --apply --branch "$1" 2>/dev/null | grep '^removed' || true
 }
 
 if [ "$mode" = serial ]; then
   for pr in $prs; do serial_one "$pr"; done
+  echo "queue done"
   exit 0
 fi
 
@@ -159,6 +169,10 @@ echo "batch PR #$batch_pr opened; waiting for the one full CI run"
 gh pr checks "$batch_pr" --watch >/dev/null 2>&1 || { echo "The batch run went red; nothing merged. Fix it on $branch or drop a PR and run again."; exit 1; }
 gh pr merge "$batch_pr" --merge >/dev/null
 echo "batch PR #$batch_pr merged into $base with a merge commit"
+for pr in $(printf '%s' "$carried" | cut -f1); do
+  tidy_worktree "$(gh pr view "$pr" --json headRefName -q .headRefName 2>/dev/null || true)"
+done
+echo "queue done"
 
 if [ -n "$dropped" ]; then
   echo "serial queue for the dropped PRs:$dropped"

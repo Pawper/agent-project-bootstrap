@@ -37,6 +37,122 @@ pr_line() {
     }'
 }
 
+# pr_brief_lines FACTS LIMIT
+# FACTS is the output of board-now.sh. Print one line per open pull
+# request, at most LIMIT, then how many more there are:
+# "#12 Title (mergeable, CI green)".
+pr_brief_lines() {
+  printf '%s\n' "$1" | tr -d '\r' | awk -F'\t' -v limit="${2:-10}" '
+    $1 == "pr" {
+      total++
+      if (total > limit) next
+      m = tolower($5)
+      if (m == "mergeable") m = "mergeable"; else if (m == "conflicting") m = "has conflicts"; else m = "mergeability unknown"
+      r = $4
+      if (r == "SUCCESS") ci = "CI green"
+      else if (r == "FAILURE" || r == "ERROR") ci = "CI red"
+      else if (r == "PENDING" || r == "EXPECTED") ci = "CI running"
+      else ci = "no CI yet"
+      printf "#%s %s (%s, %s)\n", $2, $3, m, ci
+    }
+    END { if (total > limit) printf "(and %d more)\n", total - limit }'
+}
+
+# state_of_labels LABELS
+# LABELS is a comma separated list. Print the state it names as a short
+# key: ready, in-progress, waiting-on-owner and so on, accepting both
+# "state:in-progress" and "state: in progress". Print "none" when there is
+# no state label.
+state_of_labels() {
+  printf '%s\n' "$1" | tr ',' '\n' | awk '
+    { l = tolower($0); gsub(/^[ \t]+|[ \t]+$/, "", l) }
+    l ~ /^state:/ { sub(/^state:[ \t]*/, "", l); gsub(/[ \t]+/, "-", l); print l; found = 1; exit }
+    END { if (!found) print "none" }'
+}
+
+# issues_summary FACTS
+# FACTS is the output of board-now.sh. Print the open issues grouped by
+# state: one line of counts, then the issues in progress (at most ten),
+# those waiting on the owner (at most five) and the first five that are
+# ready. Long lists are counted, not printed.
+issues_summary() {
+  printf '%s\n' "$1" | tr -d '\r' | awk -F'\t' '
+    function state_of(labels,   n, i, parts, l) {
+      n = split(labels, parts, ",")
+      for (i = 1; i <= n; i++) {
+        l = tolower(parts[i]); gsub(/^[ \t]+|[ \t]+$/, "", l)
+        if (l ~ /^state:/) { sub(/^state:[ \t]*/, "", l); gsub(/[ \t]+/, "-", l); return l }
+      }
+      return "none"
+    }
+    $1 == "total" { total = $2 }
+    $1 == "issue" {
+      s = state_of($4); count[s]++; seen++
+      item = "#" $2 " " $3
+      if (s == "in-progress" && ++ip <= 10) inprog[ip] = item
+      if (s == "waiting-on-owner" && ++wo <= 5) owner[wo] = item
+      if (s == "ready" && ++rd <= 5) ready[rd] = item
+    }
+    END {
+      if (seen == 0) exit
+      if (total == "") total = seen
+      order = "ready in-progress waiting-on-owner waiting-on-service blocked parked dated after-launch none"
+      n = split(order, keys, " ")
+      line = "Issues: " total " open."
+      sep = " "
+      for (i = 1; i <= n; i++) if (count[keys[i]] > 0) {
+        name = keys[i]; gsub(/-/, " ", name); if (name == "none") name = "no state"
+        line = line sep count[keys[i]] " " name; sep = ", "
+      }
+      if (total > seen) line = line " (first " seen " read)"
+      print line
+      if (ip > 0) { print "In progress:"; for (i = 1; i <= ip && i <= 10; i++) print inprog[i]; if (ip > 10) printf "(and %d more)\n", ip - 10 }
+      if (wo > 0) { print "Owner actions waiting:"; for (i = 1; i <= wo && i <= 5; i++) print owner[i]; if (wo > 5) printf "(and %d more)\n", wo - 5 }
+      if (rd > 0) { print "Ready:"; for (i = 1; i <= rd && i <= 5; i++) print ready[i]; if (rd > 5) printf "(and %d more)\n", rd - 5 }
+    }'
+}
+
+# leftover_summary LINES LIMIT
+# LINES is one local branch per line as "branch<TAB>ahead behind", from one
+# git for-each-ref call. Print how many branches hold commits that are not
+# on main, and name at most LIMIT of them with their counts. Prints nothing
+# when no branch is ahead.
+leftover_summary() {
+  printf '%s\n' "$1" | tr -d '\r' | awk -F'\t' -v limit="${2:-5}" '
+    NF >= 2 {
+      split($2, ab, " ")
+      total++
+      if (ab[1] + 0 > 0) { ahead++; if (ahead <= limit) names[ahead] = $1 " (" ab[1] + 0 ")" }
+    }
+    END {
+      if (ahead == 0) exit
+      printf "Leftover work: %d of %d local branches have commits not on main.\n", ahead, total
+      for (i = 1; i <= ahead && i <= limit; i++) print names[i]
+      if (ahead > limit) printf "(and %d more)\n", ahead - limit
+    }'
+}
+
+# worktree_summary PORCELAIN
+# PORCELAIN is the output of git worktree list --porcelain. Print one line
+# saying how many worktrees there are besides the main checkout and in how
+# many folders they sit. Prints nothing when there are none.
+worktree_summary() {
+  printf '%s\n' "$1" | tr -d '\r' | tr '\\' '/' | awk '
+    /^worktree / {
+      n++
+      if (n == 1) next
+      p = substr($0, 10); sub(/\/[^\/]*$/, "", p)
+      if (!(p in places)) { places[p] = 1; np++ }
+    }
+    END {
+      extra = n - 1
+      if (extra <= 0) exit
+      printf "Worktrees: %d besides the main checkout, in %d %s.", extra, np, (np == 1 ? "folder" : "folders")
+      if (np > 1 || extra > 20) printf " Tidy with: sh scripts/worktrees.sh prune"
+      printf "\n"
+    }'
+}
+
 # log_is_recent MTIME NOW [WINDOW]
 # MTIME and NOW are epoch seconds; WINDOW defaults to two hours. Print
 # "yes" when the log was written inside the window, "no" otherwise.
@@ -94,6 +210,6 @@ trim_section() {
 brief_sections() {
   case "$1" in
     clear) echo "main inprogress" ;;
-    *) echo "main prs queue inprogress handoff owner proposal" ;;
+    *) echo "main prs queue inprogress leftover handoff owner proposal" ;;
   esac
 }

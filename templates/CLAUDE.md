@@ -8,7 +8,7 @@ Many agents work here at once. Each kind of thing has one home, every rule has s
 
 - Issues and board: GitHub. CI: GitHub Actions. Agent runtime: Claude Code.
 - One-file test command: `TEST_COMMAND path/to/file`. Generated pages: `STATUS.md`.
-- Specs: by hand in `specs/<feature>/`. Work folder: WORK_FOLDER, backed up to BACKUP_LOCATION.
+- Specs: by hand in `specs/<feature>/`. Work folder: WORK_FOLDER, backed up to BACKUP_LOCATION. Worktrees: WORKTREE_DIR.
 
 ## Homes
 
@@ -32,6 +32,8 @@ Many agents work here at once. Each kind of thing has one home, every rule has s
 - Everything a person sees is calm and plain, never a developer note: no issue numbers, fields or migrations in user-facing text.
 - Report what was not done and why, not only what was. Say which commands were refused.
 - No wait loops; bounded commands; stop every shell when done.
+- At session start, reply from the session brief. Never run one network call per branch, worktree or issue in the foreground; one call for the whole board is `sh "$CLAUDE_PLUGIN_ROOT/hooks/scripts/board-now.sh"`. Count long lists, do not print them.
+- Worktrees live in one folder, WORKTREE_DIR, and go when their pull request merges. The merge queue removes them; `sh scripts/worktrees.sh prune --apply` clears a backlog. It is the one cleanup allowed, because the branch keeps the work.
 
 ## What enforces each rule
 
