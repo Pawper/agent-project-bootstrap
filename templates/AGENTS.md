@@ -68,3 +68,4 @@ The hooks come from the `project-bootstrap` plugin. If a hook refuses a command,
 - Run one test file: `TEST_COMMAND path/to/file`
 - Classify a change: `sh scripts/ci/classify.sh`
 - Open the owner console: `npx agent-project-bootstrap console`; check its config: `npx agent-project-bootstrap console --check`. Adding a service means adding an entry to `console/services.json`.
+- Propose the next round: `/project-drive`. It reads the board and the checks, proposes, and does nothing until a person approves in the session or on the issue labeled `drive`. Config in `.claude/project-drive.json`.

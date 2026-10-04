@@ -123,7 +123,7 @@ mechanical check: "report what was not done" and "stop every shell." Say so in C
 
 Create one GitHub project for the repository and set it up so nothing has to be updated by hand:
 
-- **A State field**, single select, with these seven values: Ready, In progress, Waiting on owner, Waiting on a service, Parked, Dated, After launch. Create it with `gh project field-create <number> --owner <owner> --name State --data-type SINGLE_SELECT --single-select-options "Ready,In progress,Waiting on owner,Waiting on a service,Parked,Dated,After launch"`. Matching labels on the repository, `state:ready` through `state:after-launch`, for the filing hook.
+- **A State field**, single select, with these eight values: Ready, In progress, Waiting on owner, Waiting on a service, Parked, Dated, After launch, Blocked. Create it with `gh project field-create <number> --owner <owner> --name State --data-type SINGLE_SELECT --single-select-options "Ready,In progress,Waiting on owner,Waiting on a service,Parked,Dated,After launch,Blocked"`. Matching labels on the repository, `state:ready` through `state:blocked`, for the filing hook. Blocked is for a task stopped by something outside its own words; the comment says what.
 - **Built-in workflows**, in the project's Workflows tab (the API cannot switch them on, so this is a one-time click each): Auto-add to project with the filter `is:issue is:open` on the repository; Item closed, set Status to Done; Pull request merged, set Status to Done; Auto-add sub-issues to project. Leave Auto-archive off until the board is busy. These act on the board's own Status field; nothing built in moves State.
 - **At filing**, the coordinator runs one command (`scripts/state.sh`) that sets the state label, the board's State and the mirrored built-in Status together; the filing hook refuses an issue without a state label.
 - **A nightly sync** (`scripts/board-sync.sh`, run by a scheduled workflow an hour before the audit) makes the label and both board fields agree for every issue, with closed issues as Done.
@@ -142,6 +142,16 @@ Create, in order:
 7. The constitution, then the first spec.
 8. The owner console: `console/services.json` listing every outside system, the settings each depends on with a plain label, the links, the launch to-do with its flags, and the FAQ; served locally with `npx agent-project-bootstrap console`, and mounted online behind the owner sign-in when wanted. Its check fails when a name in the example env file has no card.
 9. The session brief's config, `.claude/session-brief.json`: the merge queue's log glob, the agent's memory folder, and the line limit.
+10. The drive's config, `.claude/project-drive.json`, and one open issue titled "Drive" labeled `drive`.
+
+The drive is the loop that moves the project between sessions, and it moves it only where a person said to.
+There is no goals list; the board and the checks are the goal. One round of `/project-drive` reads the state,
+writes a numbered proposal (land these, fix that, start these, ask the owner about this one, set this record
+right), and stops. In a session it asks with the question tool; overnight it posts the proposal on the drive
+issue. A person answers with the numbers to approve. The next round pursues those and nothing else, asks a
+person for any decision that is theirs, files a new issue for anything outside a goal's words, and reports in
+one block. The config holds the runner count, the agent and minute budgets per round, the queue log glob, and
+the owner's list of what is always theirs.
 
 The brief exists because CLAUDE.md and an agent's memory both describe the past. When a session restarts, to load a
 new hook or for any other reason, the agent should see what is true now: what is on main, which pull requests are
@@ -196,6 +206,7 @@ are ready to copy from `${CLAUDE_PLUGIN_ROOT}/templates/`:
 - Step 7: `specs/constitution.md` and `specs/FEATURE/spec.md`, checked by `scripts/ci/spec-check.sh`
 - Step 8: `console/services.json` and `.env.example`; the page itself comes from the plugin's `console/` and needs no copy
 - Step 9: `.claude/session-brief.json`; the hook comes from the plugin
+- Step 10: `.claude/project-drive.json`; the skill and its scripts come from the plugin; the drive issue is filed with `gh issue create --title Drive --label drive,state:parked`
 
 Copy them into the new repository, replace every CAPITALIZED placeholder, run `sh scripts/board.sh OWNER OWNER/REPO`,
 switch on the board's built-in workflows and set branch protection by hand, and build the status page once with

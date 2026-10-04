@@ -11,7 +11,7 @@ body:
     id: state
     attributes:
       label: State
-      description: Where this task stands right now. The same seven values as the board's State field; a workflow turns this into the matching state label.
+      description: Where this task stands right now. The same eight values as the board's State field; a workflow turns this into the matching state label.
       options:
         - Ready
         - In progress
@@ -20,6 +20,7 @@ body:
         - Parked
         - Dated
         - After launch
+        - Blocked
     validations:
       required: true
   - type: textarea

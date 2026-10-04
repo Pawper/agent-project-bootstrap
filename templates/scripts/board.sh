@@ -30,10 +30,10 @@ fi
 has_state=$(gh project field-list "$number" --owner "$owner" --format json --jq '[.fields[] | select(.name == "State")] | length')
 if [ "$has_state" = "0" ]; then
   gh project field-create "$number" --owner "$owner" --name State --data-type SINGLE_SELECT \
-    --single-select-options "Ready,In progress,Waiting on owner,Waiting on a service,Parked,Dated,After launch" >/dev/null
-  echo "field State with seven values"
+    --single-select-options "Ready,In progress,Waiting on owner,Waiting on a service,Parked,Dated,After launch,Blocked" >/dev/null
+  echo "field State with eight values"
 else
-  echo "field State is already there; check it has the seven values"
+  echo "field State is already there; check it has the eight values, including Blocked"
 fi
 
 gh project link "$number" --owner "$owner" --repo "$repo" >/dev/null 2>&1 || true
