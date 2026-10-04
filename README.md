@@ -118,6 +118,7 @@ The same pieces, a different order, one pull request per step. The skill's secti
 5. CI in this order: the summary job and the setup check, which fail nothing that passes today; the spec check, which is incremental; line endings last, as one normalizing commit made when no pull requests are open.
 6. The board: pass `--existing NUMBER` to `scripts/board.sh` so it adds the State field to the board you have instead of creating a second one.
 7. The console, from the example env file you already have. Its check names every setting with no card yet.
+8. The worktree backlog. Run `sh scripts/worktrees.sh list` to see how many there are and in how many folders, `prune` to see which belong to merged branches, and `prune --apply` to remove the clean ones. Branches are kept. From then on the merge queue removes each one as its pull request lands.
 
 Never overwrite. Where a template's file already exists, the skill writes the skeleton beside it as `NAME.bootstrap.md` and leaves the merge to a person.
 
@@ -125,7 +126,7 @@ Never overwrite. Where a template's file already exists, the skill writes the sk
 
 Every hook reads the tool call before it runs, and when it refuses, it prints one plain sentence saying what it blocked and what to do instead. The scripts are POSIX shell with awk and nothing else, so they run under Git Bash on Windows and on macOS and Linux as they are.
 
-**Deletes.** `rm`, `rmdir`, `del`, `erase`, `rd`, `Remove-Item`, `ri`, and `git clean`, including inside a `cmd /c` or `powershell -Command` wrapper. With many agents, a delete is the one change nobody else can undo, and a file one agent considers dead is often the file another is reading. The rule is never delete; move aside. The hook says so and suggests `git mv`.
+**Deletes.** `rm`, `rmdir`, `del`, `erase`, `rd`, `Remove-Item`, `ri`, and `git clean`, including inside a `cmd /c` or `powershell -Command` wrapper. With many agents, a delete is the one change nobody else can undo, and a file one agent considers dead is often the file another is reading. The rule is never delete; move aside. The hook says so and suggests `git mv`. There is one sanctioned cleanup: the worktree of a merged branch, removed through `scripts/worktrees.sh`, because a worktree is a checkout and the branch keeps the work.
 
 **Forced pushes.** `git push` with `--force`, `--force-with-lease`, `--force-if-includes`, `-f` in any combined flag, or a `+` refspec. A rewritten branch pulls the ground out from every worktree based on it. Push a new commit instead, or start a new branch.
 
