@@ -290,6 +290,28 @@ workflow_model_reason() {
   fi
 }
 
+# batch_merge_reason COMMAND
+# Print the number of PRs when the command runs merge-queue.sh with more
+# than two PR numbers and names neither --batch nor --serial. Print nothing
+# otherwise: a named mode is always allowed, and so are two or fewer PRs.
+batch_merge_reason() {
+  split_commands "$1" | awk '
+    {
+      line = $0
+      gsub(/["'\'']/, "", line)
+      n = split(line, t, /[ \t]+/)
+      found = 0
+      for (i = 1; i <= n; i++) if (t[i] ~ /(^|[\/\\])merge-queue\.sh$/) found = 1
+      if (!found) next
+      prs = 0; flagged = 0
+      for (i = 1; i <= n; i++) {
+        if (t[i] == "--batch" || t[i] == "--serial") flagged = 1
+        else if (t[i] ~ /^[0-9]+$/) prs++
+      }
+      if (prs > 2 && !flagged) { print prs; exit }
+    }'
+}
+
 # state_label_reason COMMAND
 # Print "gh issue create" when the command creates an issue without a label
 # that starts with "state:". Print nothing when the label is there, when the

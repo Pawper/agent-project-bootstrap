@@ -105,6 +105,13 @@ mechanical check: "report what was not done" and "stop every shell." Say so in C
 - The full run is the gate on main after every merge; a red main opens an issue automatically.
 - The merge queue merges a green PR without a re-run when main changed only outside the PR's classes. This
   depends on "require branches to be up to date" staying off in branch protection.
+- The batch is the unit of merging; serial is the exception you name. More than two green PRs go into one
+  integration branch, merged in order with merge commits, each proven by the type-check and only the test
+  files it touched, then one full run and one merge. A PR that conflicts or goes red is dropped and goes
+  serially afterward. Merging must never take longer than the development did; a hook refuses the serial
+  pattern for more than two PRs unless `--serial` is named, which is right for a migration or anything that
+  must land alone. A PR in a batch has its own CI run cancelled; it competes for runners and proves nothing
+  the batch does not.
 - No path filters that can skip a run on an update (a merge from main that touches only docs must still start one, or the queue waits forever).
 - A fallback runner when the self-hosted ones are offline.
 
@@ -124,7 +131,7 @@ Create one GitHub project for the repository and set it up so nothing has to be 
 Create, in order:
 1. The repository with CLAUDE.md and AGENTS.md from sections 1 and 2, short, pointing at the hooks and checks.
 2. The issue template with the State field; the project board set up exactly as section 5 says; the labels.
-3. The hooks, which the plugin provides: block delete, force-push, full sweeps, direct writes to generated pages, issue creation without a state label, agent dispatch without a fitting model.
+3. The hooks, which the plugin provides: block delete, force-push, full sweeps, direct writes to generated pages, issue creation without a state label, agent dispatch without a fitting model, and the serial merge of more than two PRs without a named mode.
 4. The CI skeleton from section 4: the classifier, the per-class jobs, the `CI passed` summary, the status-page, spec, setup-line and line-endings checks, the full run on main, the merge queue, the nightly audit. Then branch protection by hand.
 5. The setup document, the notice file, the one-screen status page and its build and check scripts.
 6. The work folder outside the repo, with a register for research and an off-site backup scheduled.
