@@ -178,6 +178,34 @@ eq "batch PR body" "- #41 Add retries. Closes #41
 eq "one line per PR" "#13 dropped: conflicts with the batch so far" "$(batch_line 13 dropped 'conflicts with the batch so far')"
 eq "one line without a reason" "#12 merged into the batch" "$(batch_line 12 'merged into the batch')"
 
+printf '\n# session brief\n'
+. "$root/hooks/scripts/session-brief-lib.sh"
+fx="$root/tests/fixtures"
+eq "json_number reads a number" "40" "$(json_number '{"maxLines": 40, "x": "y"}' maxLines)"
+eq "json_number missing key" "" "$(json_number '{"x": 1}' maxLines)"
+eq "pr line, green" "#41 Add retries to the client (mergeable, CI green)" "$(pr_line "$(sed -n 1p "$fx/pr-list.tsv")")"
+eq "pr line, conflicts and a failure" "#42 Fix the date parser (has conflicts, CI 1 failed)" "$(pr_line "$(sed -n 2p "$fx/pr-list.tsv")")"
+eq "pr line, pending" "#45 Rename the status page (mergeability unknown, CI 2 pending)" "$(pr_line "$(sed -n 3p "$fx/pr-list.tsv")")"
+eq "pr line, no CI" "#47 Docs only (mergeable, no CI yet)" "$(pr_line "$(sed -n 4p "$fx/pr-list.tsv")")"
+eq "log written an hour ago is recent" "yes" "$(log_is_recent 1000000 1003600)"
+eq "log written three hours ago is not" "no" "$(log_is_recent 1000000 1010800)"
+eq "log with a bad time is not" "no" "$(log_is_recent '' 1000000)"
+eq "newest handoff, ignoring other notes" "/mem/handoff-2026-10-02.md" "$(newest_handoff "$(cat "$fx/handoff-listing.tsv")")"
+eq "no handoff files, nothing" "" "$(newest_handoff "$(printf '1\t/mem/notes.md\n')")"
+eq "handoff head skips front matter" "The batch queue PR is open and waiting on one full run.
+Next: merge it, then run the serial queue for #45, which conflicted." "$(handoff_head "$(cat "$fx/handoff-2026-10-02.md")" 2)"
+eq "trim within the limit" "a
+b" "$(trim_section 'a
+b' 5)"
+eq "trim past the limit says how many" "a
+b
+(and 2 more)" "$(trim_section 'a
+b
+c
+d' 2)"
+eq "a clear prints the short form" "main inprogress" "$(brief_sections clear)"
+eq "a startup prints everything" "main prs queue inprogress handoff owner" "$(brief_sections startup)"
+
 printf '\n# task_tier and agent_model_reason\n'
 eq "Explore is a lookup" "lookup" "$(task_tier Explore 'Find config' 'Find where the port is set')"
 eq "Plan is hard" "hard" "$(task_tier Plan 'Plan it' 'Plan the cache')"

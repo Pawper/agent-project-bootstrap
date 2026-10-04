@@ -93,6 +93,10 @@ first hour:
 - **A scheduled audit that speaks only when something is wrong**: open issues with no State, issues left stale by
   a merged PR, a red main run; one comment on a tracking issue, nothing when clean.
 - **A watcher on anything long-running** (a merge queue, an upload, a build), re-armed until it ends.
+- **A brief at session start** that prints the live state, main, open PRs, the queue, what is in progress, the
+  last handoff, what waits on the owner, so an agent starts from facts rather than from notes about the past.
+  The plugin's SessionStart hook does this; a hook newly registered loads on the next session start, while an
+  edit to a script already registered applies at once.
 
 If a rule has none of these, either give it one or accept that it will not hold. Two rules in section 2 have no
 mechanical check: "report what was not done" and "stop every shell." Say so in CLAUDE.md and review for them.
@@ -137,6 +141,14 @@ Create, in order:
 6. The work folder outside the repo, with a register for research and an off-site backup scheduled.
 7. The constitution, then the first spec.
 8. The owner console: `console/services.json` listing every outside system, the settings each depends on with a plain label, the links, the launch to-do with its flags, and the FAQ; served locally with `npx agent-project-bootstrap console`, and mounted online behind the owner sign-in when wanted. Its check fails when a name in the example env file has no card.
+9. The session brief's config, `.claude/session-brief.json`: the merge queue's log glob, the agent's memory folder, and the line limit.
+
+The brief exists because CLAUDE.md and an agent's memory both describe the past. When a session restarts, to load a
+new hook or for any other reason, the agent should see what is true now: what is on main, which pull requests are
+open and in what state, whether the queue ran, what is in progress, what the last session handed off, and what
+waits on the owner. The plugin's SessionStart hook prints that in one block of at most forty lines. The config
+tells it where the queue logs and the memory folder are; without it, the brief still prints the git and gh
+sections.
 
 Then the first feature agent runs.
 
@@ -183,6 +195,7 @@ are ready to copy from `${CLAUDE_PLUGIN_ROOT}/templates/`:
 - Step 6: nothing in the plugin; it lives outside the repo, so create it by hand and name its path in CLAUDE.md
 - Step 7: `specs/constitution.md` and `specs/FEATURE/spec.md`, checked by `scripts/ci/spec-check.sh`
 - Step 8: `console/services.json` and `.env.example`; the page itself comes from the plugin's `console/` and needs no copy
+- Step 9: `.claude/session-brief.json`; the hook comes from the plugin
 
 Copy them into the new repository, replace every CAPITALIZED placeholder, run `sh scripts/board.sh OWNER OWNER/REPO`,
 switch on the board's built-in workflows and set branch protection by hand, and build the status page once with

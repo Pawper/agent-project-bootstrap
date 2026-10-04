@@ -33,7 +33,7 @@ What never changes: one home per kind of thing, nothing appended to a shared pag
 | Piece | Where | What it does |
 |---|---|---|
 | The skill | `skills/project-bootstrap/SKILL.md` | The design: homes, rules, enforcement, CI from day one, and the outputs in order |
-| The hooks | `hooks/hooks.json`, `hooks/scripts/` | Seven PreToolUse hooks that block the dangerous commands, the wasteful dispatches and the slow merge pattern |
+| The hooks | `hooks/hooks.json`, `hooks/scripts/` | Seven PreToolUse hooks that block the dangerous commands, the wasteful dispatches and the slow merge pattern, and one SessionStart hook that prints the project's live state |
 | The templates | `templates/` | Issue template, CLAUDE.md and AGENTS.md, setup and notice skeletons, the status page and its scripts, the CI workflow, the merge queue, the board setup, the nightly audit |
 | The owner console | `console/`, sample in `templates/console/` | One page: what the project talks to, the state of each system, how to do the routine things |
 | The tests | `tests/run.sh` | One test per pure function in every script, plus the console's Node tests |
@@ -137,6 +137,10 @@ Every hook reads the tool call before it runs, and when it refuses, it prints on
 
 **The serial merge pattern.** `merge-queue.sh` with more than two pull request numbers and neither `--batch` nor `--serial`. One project merged seven pull requests one at a time, each with its own full browser run, in ninety minutes; thirteen went through one integration branch with scoped tests and one full run in twenty. Merging must never take longer than the development did, so the batch is the unit of merging. `--serial` is always allowed, because a migration or a risky change should land alone by choice, and two or fewer pull requests without a flag are allowed. The notes in `templates/scripts/ci/QUEUE.md` say when to batch and when not to.
 
+**And one hook that blocks nothing: the session brief.** At every session start, resume and clear, `session-brief.sh` prints the project's live state in one short block, at most forty lines: the last five commits on main and whether the tree is clean, the open pull requests with their mergeability and CI, whether the merge queue ran in the last two hours and its last line, the issues in progress, the first two lines of the newest handoff note, and the issues waiting on the owner. A clear prints the short form, main and in progress only. A project's CLAUDE.md and an agent's memory both describe the past; this prints the present, so the agent starts from facts. It reads `.claude/session-brief.json` for the queue log glob, the memory folder and the line limit, and without that file prints only the git and gh sections. Every git and gh call fails soft: a missing or signed-out tool makes its section say "(unavailable)" and the hook still exits cleanly within its twenty-second timeout. It never prints a token, a secret or an environment value.
+
+**When a hook change takes effect.** A hook newly registered in `hooks.json` loads on the next session start. An edit to a script that is already registered applies at once, on the next tool call, because the script is read each time it runs. So after adding a hook, restart the session; after fixing one, do not.
+
 Sample of what a refusal looks like, from the delete hook:
 
 ```text
@@ -160,6 +164,7 @@ All of them live in `templates/` and are meant to be copied into the project roo
 - `scripts/ci/setup-check.sh` and `setup-paths.txt`: fails a PR that changes a setup file (migrations, the example env file, the container files, the workflows, the dependency manifests) without a change to the manual. The manual is `SETUP.md` unless a `manual PATH` line in `setup-paths.txt` names the one the project already keeps.
 - `scripts/ci/line-endings.sh` and `.gitattributes`: the attributes file forces LF everywhere; the check fails on any tracked text file that still has CRLF.
 - `console/services.json` and `.env.example`: the one file that drives the owner console, and the example env file the console check reads it against.
+- `.claude/session-brief.json`: where the merge queue logs live, where the agent's memory folder is, and how many lines the session brief may print. Commented in the file itself.
 - `scripts/ci/classes.txt`: which paths belong to which change class.
 - `scripts/ci/classify.sh`: prints the classes for a diff.
 - `scripts/ci/merge-queue.sh --batch PR...`: the queue's default for more than two pull requests. Cuts an integration branch from main, merges each in order with a merge commit, runs the type-check and only the test files that pull request touched after each merge, drops one that conflicts or goes red with one printed line, rebuilds the status page, opens one pull request that closes every carried issue, waits for the one full run, merges it, then runs the serial queue for anything dropped. `--serial PR...` keeps the one-at-a-time behavior by choice: merge a green PR without a re-run when main moved only outside its classes, update the branch when it moved inside them. The pure parts are in `batch-lib.sh`; the one-file test runner is `run-test-file.mjs`; the notes are in `QUEUE.md`. Turn off "require branches to be up to date" in branch protection; this script is the queue.
@@ -297,7 +302,7 @@ ok    no overlap merges
 ok    overlap reruns
 ok    ci on main reruns
 
-200 passed, 0 failed
+216 passed, 0 failed
 ```
 
 ## License

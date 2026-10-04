@@ -47,6 +47,7 @@ Many agents work here at once. Each kind of thing has one home, every rule has s
 | A red main is seen | The `full` CI job opens an issue labeled `ci-red` when it fails |
 | No usage wasted on dispatch | The `require-agent-model` hook refuses an agent or workflow dispatch without a model that fits the task |
 | Merging never outlasts the work | The `require-batch-merge` hook refuses more than two PRs through the queue without `--batch` or `--serial`; see `scripts/ci/QUEUE.md` |
+| A session starts from facts | The `session-brief` hook prints main, open PRs, the queue, what is in progress, the last handoff and what waits on the owner at every session start; `.claude/session-brief.json` tells it where to look |
 | A setup change carries its line | The `setup-check` CI job fails a PR that changes a file in `scripts/ci/setup-paths.txt` without changing `SETUP.md` |
 | A source change carries its spec | The `spec-check` CI job fails a PR that changes `src/` without a change in a `specs/<feature>/` folder |
 | Line endings stay LF | `.gitattributes` forces it and the `line-endings` CI job fails on any CRLF file |
