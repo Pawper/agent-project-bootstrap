@@ -332,6 +332,6 @@ ok    ci on main reruns
 251 passed, 0 failed
 ```
 
-## License
+## License, privacy and terms
 
-MIT. See `LICENSE`.
+MIT. See `LICENSE`. The plugin collects nothing and has no service behind it; `PRIVACY.md` says what it reads and where that goes, and `TERMS.md` says in plain words what the license means in practice. Questions and problems go to the issue tracker.

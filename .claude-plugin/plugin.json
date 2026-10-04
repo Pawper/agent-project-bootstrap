@@ -1,7 +1,12 @@
 {
   "name": "project-bootstrap",
   "displayName": "Project Bootstrap",
-  "version": "0.2.0",
+  "version": "0.2.1",
+  "icon": "./assets/icon.png",
+  "documentationUrl": "https://github.com/Pawper/agent-project-bootstrap#readme",
+  "supportUrl": "https://github.com/Pawper/agent-project-bootstrap/issues",
+  "privacyPolicyUrl": "https://github.com/Pawper/agent-project-bootstrap/blob/main/PRIVACY.md",
+  "termsOfServiceUrl": "https://github.com/Pawper/agent-project-bootstrap/blob/main/TERMS.md",
   "description": "Stand up a project so many coding agents can work in it at once without colliding: a skill that decides the homes and the rules, hooks that enforce them, and templates for the files the skill creates.",
   "author": {
     "name": "Phillip A. Wessels",
