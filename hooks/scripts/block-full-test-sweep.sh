@@ -16,5 +16,5 @@ case "$hit" in
   npm*|yarn*|pnpm*|bun*) example="$hit -- path/to/one_test" ;;
   *) example="$hit path/to/one_test" ;;
 esac
-printf '%s\n' "Blocked the full test sweep \`$hit\` because the whole suite runs on main in CI; run the tests for the files you changed instead, for example \`$example\`." >&2
+printf '%s\n' "Blocked the full test sweep \`$hit\` because it names no test file, and the whole suite runs on main in CI; name the file for the change you made, for example \`$example\` (any .test or .spec file in .ts, .tsx, .js, .jsx, .mjs or .cjs is fine, as is a -k, -t or --filter pattern)." >&2
 exit 2

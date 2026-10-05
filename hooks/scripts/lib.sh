@@ -48,13 +48,24 @@ split_commands() {
     # lines that end in a backslash, so a command written over several
     # lines is judged whole.
     function unquote(w) { gsub(/["'\'']/, "", w); return w }
+    # opens(s): how many more "(" than ")" the text holds. A heredoc opened
+    # inside a command substitution, such as --body "$(cat <<EOF ... EOF)",
+    # leaves its command unfinished until the substitution closes, so the
+    # line is held and the lines after the terminator are joined onto it.
+    function opens(s,   a, b) { a = gsub(/\(/, "(", s); b = gsub(/\)/, ")", s); return a - b }
+    function emit(s) { gsub(/\$\([^)]*\)/, "SUBST", s); gsub(/[ \t]+/, " ", s); print s }
     {
       line = $0
       sub(/\r$/, "", line)
       if (inhere) {
         check = line
         if (dash) sub(/^\t+/, "", check)
-        if (check == word) inhere = 0
+        if (check == word) { inhere = 0; if (held != "") joinheld = 1 }
+        next
+      }
+      if (joinheld) {
+        held = held " " line
+        if (opens(held) <= 0) { emit(held); held = ""; joinheld = 0 }
         next
       }
       if (joining) { buf = buf " " line; gsub(/[ \t]+/, " ", buf) } else { buf = line }
@@ -66,10 +77,11 @@ split_commands() {
         sub(/^<<-?[ \t]*/, "", tok)
         word = unquote(tok)
         inhere = 1
+        if (opens(buf) > 0) { held = buf; next }
       }
       print buf
     }
-    END { if (joining && buf != "") print buf }' | awk '
+    END { if (held != "") emit(held); if (joining && buf != "") print buf }' | awk '
     { gsub(/&&|\|\||;|\||\$\(|`|\(|\)|\{|\}/, "\n"); print }' | awk '
     {
       line = $0
