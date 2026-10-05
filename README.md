@@ -1,6 +1,28 @@
 # agent-project-bootstrap
 
-A Claude Code plugin for standing up a project so many coding agents can work in it at once without colliding.
+<img src="assets/icon.png" alt="" width="72" align="right">
+
+A Claude Code plugin for projects where many coding agents work at once. It decides one home for each kind of thing, refuses the commands that make agents collide, keeps the board honest, merges in batches, and opens every session with the live state of the project. Built from what went wrong on real projects, one lesson per pull request.
+
+**Install**, inside a Claude Code session:
+
+```text
+/plugin marketplace add Pawper/agent-project-bootstrap
+/plugin install project-bootstrap@agent-project-bootstrap
+```
+
+Then, in a new or struggling repository: `/project-bootstrap set this project up for many agents`.
+
+**What you get**
+
+- **Ten hooks.** Deletes, forced pushes, full test sweeps, hand edits to generated pages, issues without a State, agents dispatched on a heavier model than the task needs, more than two pull requests merged one at a time, pull requests closed without a reason, detached worktrees: all refused before they run, each with one sentence saying what to do instead. A stop hook that will not let a task end with files stranded in its worktree. A session brief that prints main, the open pull requests, who has the ball on every issue, the queue, the leftovers and the proposed next round, in two seconds and one network call.
+- **Templates for everything the skill creates.** Issue template, CLAUDE.md and AGENTS.md, the status page that builds itself from stubs, a CI skeleton that runs only what a change touches and reports once, a merge queue that batches by default and says in plain words why a run is stuck, board and label scripts, a nightly audit that speaks only when something is wrong, a worktree script that gives every branch an ending.
+- **Two more skills.** `/project-status` has light subagents read bodies and comments, only for items that changed, so you keep one line per item. `/project-drive` proposes the next round from the board and the checks and pursues only what you approve.
+- **An owner console.** One page, from one config file: what the project talks to, the state of each system, how to do the routine things.
+
+![The owner console built from the sample configuration](docs/console.png)
+
+It was built for GitHub, Actions, `gh` and Claude Code. When a project uses something else, the skill says so once and adapts. [The full story is below](#why); the [user flow](#the-user-flow-start-to-finish) is ten short steps.
 
 ## Why
 
@@ -215,9 +237,7 @@ Two rules in the skill have no mechanical check anywhere: "report what was not d
 
 ## The owner console
 
-The piece a spec kit does not give you: one page that answers "what systems does this project talk to, what state is each in, and how do I do the routine things." It is kept current from the project's configuration, never written by hand.
-
-![The owner console built from the sample configuration](docs/console.png)
+The piece a spec kit does not give you: one page that answers "what systems does this project talk to, what state is each in, and how do I do the routine things." It is kept current from the project's configuration, never written by hand. The screenshot at the top of this page is the sample configuration with a few settings present.
 
 **Two mounts, one source.** By default it is a small side app on your machine:
 
