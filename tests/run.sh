@@ -258,6 +258,45 @@ eq "worktrees counted with their folders" "Worktrees: 4 besides the main checkou
 eq "only the main checkout, nothing said" "" "$(worktree_summary 'worktree /repo
 branch refs/heads/main')"
 
+printf '\n# reading a run\n'
+. "$root/templates/scripts/ci/run-lib.sh"
+eq "green run" "green" "$(run_verdict "$(printf 'build\tcompleted\tsuccess\t1000\t\ntest\tcompleted\tskipped\t1000\t\n')" 2000)"
+eq "pending run" "pending" "$(run_verdict "$(printf 'build\tin_progress\t\t1000\t\n')" 2000)"
+eq "failed run names the job" "failed: test, lint" "$(run_verdict "$(printf 'build\tcompleted\tsuccess\t1\t\ntest\tcompleted\tfailure\t1\t\nlint\tcompleted\tfailure\t1\t\n')" 2000)"
+eq "canceled run" "canceled: test" "$(run_verdict "$(printf 'test\tcompleted\tcancelled\t1\t\n')" 2000)"
+eq "outage by annotation" "outage: build: The job was not acquired by Runner of type hosted" "$(run_verdict "$(printf 'build\tqueued\t\t1000\tThe job was not acquired by Runner of type hosted\n')" 1100)"
+eq "outage by a long queue while our runners idle" "outage: build: queued for 10 minutes while 2 of our runners were idle" "$(run_verdict "$(printf 'build\tqueued\t\t1000\t\n')" 1600 2)"
+eq "a long queue with no idle runner is just pending" "pending" "$(run_verdict "$(printf 'build\tqueued\t\t1000\t\n')" 1600 0)"
+eq "githubstatus degraded" "GitHub Actions: degraded_performance" "$(githubstatus_verdict '{"components":[{"name":"Git Operations","status":"operational"},{"name":"Actions","status":"degraded_performance"}]}')"
+eq "githubstatus fine" "" "$(githubstatus_verdict '{"components":[{"name":"Actions","status":"operational"}]}')"
+eq "githubstatus empty" "" "$(githubstatus_verdict '')"
+eq "failing tests from three runner formats" "src/preview.test.tsx > renders the preview
+tests/test_a.py::test_x
+TestParse" "$(failed_tests_from_log "$(printf ' FAIL  src/preview.test.tsx > renders the preview 120ms\n   ok other\nFAILED tests/test_a.py::test_x - assert 1 == 2\n--- FAIL: TestParse (0.00s)\n FAIL  src/preview.test.tsx > renders the preview\n')")"
+flog=$(flaky_log_add '' 2026-10-05 41 'src/preview.test.tsx > renders' failed)
+flog=$(flaky_log_add "$flog" 2026-10-05 41 'src/preview.test.tsx > renders' passed)
+flog=$(flaky_log_add "$flog" 2026-10-05 42 'src/preview.test.tsx > renders' failed)
+flog=$(flaky_log_add "$flog" 2026-10-05 42 'src/preview.test.tsx > renders' passed)
+flog=$(flaky_log_add "$flog" 2026-10-05 43 'src/other.test.ts > once' failed)
+flog=$(flaky_log_add "$flog" 2026-10-05 43 'src/other.test.ts > once' passed)
+flog=$(flaky_log_add "$flog" 2026-10-05 44 'src/real.test.ts > broken' failed)
+eq "the log grows one line at a time" "7" "$(printf '%s\n' "$flog" | wc -l | tr -d ' ')"
+eq "offenders: failed then passed, twice, with their PRs" "2	src/preview.test.tsx > renders	41,42" "$(flaky_offenders "$flog" 2)"
+eq "one flake is not yet an offender, a plain failure never is" "1	src/other.test.ts > once	43
+2	src/preview.test.tsx > renders	41,42" "$(flaky_offenders "$flog" 1 | sort -t'	' -k2)"
+eq "main in flight" "yes" "$(main_in_flight "$(printf '1\tmain\tin_progress\tpush\n2\tfeature\tqueued\tpull_request\n')")"
+eq "main quiet" "no" "$(main_in_flight "$(printf '1\tmain\tcompleted\tpush\n2\tfeature\tin_progress\tpull_request\n')")"
+
+printf '\n# runner doctor\n'
+. "$root/templates/scripts/ci/doctor-lib.sh"
+eq "WSL bash on PATH warns" "warn" "$(bash_verdict 'C:\Windows\System32\bash.exe')"
+eq "Git bash is fine" "ok" "$(bash_verdict '/c/Program Files/Git/usr/bin/bash')"
+eq "no bash warns" "warn" "$(bash_verdict '')"
+eq "a tool whose folder is on the machine PATH" "ok" "$(tool_on_machine_path '/c/Program Files/nodejs/node' 'C:\Windows;C:\Program Files\nodejs\;C:\Program Files\Git\cmd')"
+eq "a tool missing from the machine PATH" "warn" "$(tool_on_machine_path '/c/Users/me/AppData/Roaming/npm/node' 'C:\Windows;C:\Program Files\Git\cmd')"
+eq "a restricted machine policy warns" "warn" "$(policy_verdict 'MachinePolicy=Undefined UserPolicy=Undefined Process=Undefined CurrentUser=Undefined LocalMachine=Restricted')"
+eq "an open policy is fine" "ok" "$(policy_verdict 'MachinePolicy=Undefined LocalMachine=RemoteSigned')"
+
 printf '\n# board digest\n'
 . "$root/scripts/board/board-lib.sh"
 dfacts=$(cat "$fx/board-facts-dated.tsv")

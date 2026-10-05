@@ -128,6 +128,12 @@ mechanical check: "report what was not done" and "stop every shell." Say so in C
   the batch does not.
 - No path filters that can skip a run on an update (a merge from main that touches only docs must still start one, or the queue waits forever).
 - A fallback runner when the self-hosted ones are offline.
+- The queue reads the run it waits on and says what is happening: GitHub's outage told apart from our
+  failure, the failing check by name, a canceled run re-run, a merge held while a run on main is in flight.
+- An unreliable test is a bug, not weather: the queue records a test that failed and then passed, and files an
+  issue after its second flake instead of re-running it again.
+- A self-hosted runner gets the doctor run on it and the runner check workflow run once before its first real
+  run, so the wrong bash, a missing tool on the service's PATH and the execution policy are found first.
 
 ## 5. The project board, exactly
 

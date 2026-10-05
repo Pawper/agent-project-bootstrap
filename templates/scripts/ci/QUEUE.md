@@ -26,6 +26,25 @@ Two or fewer pull requests with no flag also run serially. More than two with no
 
 Every open pull request starts its own CI run on every update. Once a pull request is in a batch, its own run is competing with the batch's run for the same runners and proving nothing the batch does not. The queue cancels a carried pull request's in-progress run for that reason. If you batch by hand, cancel them yourself.
 
+## What the queue says while it waits
+
+The queue reads the run it waits on and says plainly what is happening, so a stuck run is a line of output and not half an hour of diagnosis.
+
+- **"GitHub Actions is down, not your code."** When a job's annotation says it was not acquired by a hosted runner, or a job has sat queued for more than five minutes while runners of ours were idle. The line adds GitHub's own status for Actions when it is not operational. If the project has an outage switch, set `QUEUE_OUTAGE_ON` and `QUEUE_OUTAGE_OFF` to the commands that flip it, for example `gh variable set CI_OUTAGE --body 1` and `gh variable delete CI_OUTAGE`; the queue flips it on for that run and off again when the run goes green.
+- **"CI failed: lint, test."** The failing jobs by name, and the failing tests read from the run's log.
+- **"The run you are waiting on was canceled; re-running it."** Instead of silence.
+- **"Holding the merge: a run on main is in flight."** The queue never merges while a run on main is in progress, so a proof run on main is never canceled by a merge. It holds for up to twenty minutes, then says so and merges.
+
+The wait is bounded by `QUEUE_WAIT_MINUTES`, default sixty; past it the queue says so and stops, and a later run picks up.
+
+## An unreliable test is a bug, not weather
+
+The queue keeps a record under `.scratch/queue/flaky.tsv`: each test that failed on a pull request and then passed on a retry, by name, with the pull request and the day. A test that flakes twice gets an issue filed, labeled bug and ready, naming the pull requests it cost, and the queue says so. After that it is not re-run again; it is fixed or quarantined under its own issue. The record is local to the machine that runs the queue, which is the one that sees every result.
+
+## Before a self-hosted runner's first run
+
+Run the doctor on the machine: `sh scripts/ci/runner-doctor.sh`. It checks the four things that cost a real project four tries: which bash a step would get (Windows puts WSL's first), whether Git, Node and gh are on the machine PATH the runner service sees, PowerShell's execution policy, and whether the runner is online. Then run the `Runner check` workflow from the Actions tab once; it is the job-level shell default and the PowerShell step, written the way that works.
+
 ## What the queue needs from the project
 
 - A type-check command. It uses `npx tsc --noEmit` when a `tsconfig.json` is present; set `QUEUE_TYPECHECK_COMMAND` for anything else. With neither, the type-check step is skipped.
