@@ -59,6 +59,23 @@ eq "a label on a continued line counts" "" "$(state_label_reason 'gh issue creat
 eq "a create inside a heredoc is not a command" "" "$(state_label_reason 'cat > .github/workflows/ci.yml <<EOF
         run: gh issue create --title x
 EOF')"
+eq "a heredoc file first, then the labeled create" "" "$(state_label_reason "cat > b.md <<'EOF'
+Body text here.
+EOF
+gh issue create --title t --label \"state: in progress\" --body-file b.md")"
+eq "the label after --body-file" "" "$(state_label_reason 'gh issue create --title t --body-file b.md --label "state: in progress"')"
+eq "a body from a heredoc inside a substitution, label after it" "" "$(state_label_reason "gh issue create --title t --body \"\$(cat <<'EOF'
+Body text here.
+EOF
+)\" --label \"state: ready\"")"
+eq "the same shape with no label is still refused" "gh issue create" "$(state_label_reason "gh issue create --title t --body \"\$(cat <<'EOF'
+Body text here.
+EOF
+)\"")"
+eq "a heredoc body that mentions gh issue create" "" "$(state_label_reason "cat > b.md <<'EOF'
+Run gh issue create without a label to see the hook refuse it.
+EOF
+gh issue create --title t --label state:ready --body-file b.md")"
 eq "an rm inside a heredoc is not a command" "" "$(delete_reason 'cat > script.sh <<EOF
 rm -rf build
 EOF')"
@@ -116,6 +133,14 @@ eq "dotnet test with --filter is fine" "" "$(full_sweep_reason 'dotnet test --fi
 eq "python -m pytest" "pytest" "$(full_sweep_reason 'python -m pytest')"
 eq "uv run pytest" "pytest" "$(full_sweep_reason 'uv run pytest')"
 eq "a sweep after cd" "pytest" "$(full_sweep_reason 'cd app && pytest')"
+for ext in ts tsx js jsx mjs cjs; do
+  eq "one named .test.$ext file is not a sweep" "" "$(full_sweep_reason "npx vitest run src/Foo.test.$ext")"
+  eq "one named .spec.$ext file is not a sweep" "" "$(full_sweep_reason "npx vitest run src/Foo.spec.$ext")"
+done
+eq "one .tsx file with a project flag" "" "$(full_sweep_reason 'npx vitest run src/Foo.test.tsx --project dom')"
+eq "one .tsx file with a config flag first" "" "$(full_sweep_reason 'npx vitest run --config vitest.dom.config.ts src/Foo.test.tsx')"
+eq "one .tsx file with Windows separators" "" "$(full_sweep_reason 'npx vitest run src\Foo.test.tsx')"
+eq "one .tsx file piped to tail" "" "$(full_sweep_reason 'npx vitest run src/Foo.test.tsx 2>&1 | tail -20')"
 eq "npm run build is fine" "" "$(full_sweep_reason 'npm run build')"
 eq "ls is fine" "" "$(full_sweep_reason 'ls tests')"
 
