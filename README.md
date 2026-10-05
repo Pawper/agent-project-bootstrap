@@ -186,6 +186,8 @@ All of them live in `templates/` and are meant to be copied into the project roo
 - `console/services.json` and `.env.example`: the one file that drives the owner console, and the example env file the console check reads it against.
 - `.claude/session-brief.json`: where the merge queue logs live, where the agent's memory folder is, and how many lines the session brief may print. Commented in the file itself.
 - `.claude/project-drive.json`: runners, the agent and minute budgets per drive round, the queue log glob, and the owner decisions list. Commented in the file itself.
+- `scripts/ci/run-lib.sh`: how the queue reads a run. It tells GitHub's outage apart from a failure (a job not acquired by a hosted runner, or queued for minutes while our runners sit idle, confirmed against GitHub's status page), names the failing jobs and tests, notices a canceled run and re-runs it, keeps the flaky-test record and files an issue after a test's second flake, and waits for a quiet main before merging. The notes in `QUEUE.md` say what each line means and how to wire an outage switch.
+- `scripts/ci/runner-doctor.sh` and `.github/workflows/runner-check.yml`: for a self-hosted runner. The doctor checks the machine before any run: which bash a step would get, whether Git, Node and gh are on the PATH the runner service sees, PowerShell's execution policy, and whether the runner is online. The workflow is a first step that already runs on a Windows runner, with the three fixes a real project needed written in: Git's bash named by path as the job default, PowerShell steps on their own shell, and no expression in a shell name.
 - `scripts/ci/classes.txt`: which paths belong to which change class.
 - `scripts/ci/classify.sh`: prints the classes for a diff.
 - `scripts/ci/merge-queue.sh --batch PR...`: the queue's default for more than two pull requests. Cuts an integration branch from main, merges each in order with a merge commit, runs the type-check and only the test files that pull request touched after each merge, drops one that conflicts or goes red with one printed line, rebuilds the status page, opens one pull request that closes every carried issue, waits for the one full run, merges it, then runs the serial queue for anything dropped. `--serial PR...` keeps the one-at-a-time behavior by choice: merge a green PR without a re-run when main moved only outside its classes, update the branch when it moved inside them. The pure parts are in `batch-lib.sh`; the one-file test runner is `run-test-file.mjs`; the notes are in `QUEUE.md`. Turn off "require branches to be up to date" in branch protection; this script is the queue.
@@ -353,7 +355,7 @@ ok    no overlap merges
 ok    overlap reruns
 ok    ci on main reruns
 
-293 passed, 0 failed
+337 passed, 0 failed
 ```
 
 ## License, privacy and terms

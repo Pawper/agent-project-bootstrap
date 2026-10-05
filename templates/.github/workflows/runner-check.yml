@@ -1,0 +1,49 @@
+# Proves a self-hosted Windows runner can run this project's steps, with
+# the three things that cost a real project four tries baked in:
+#
+#   1. Windows picks the wrong bash. With WSL installed, "bash" on PATH is
+#      System32\bash.exe, not Git's. Name Git's bash by path in the job's
+#      default shell, so every step gets the one with the project's tools.
+#   2. PowerShell's execution policy refuses the step. Use "pwsh" (or
+#      "powershell") as the step shell: the runner starts it with the policy
+#      set for that one process, so the machine's policy does not matter.
+#      Running powershell yourself from a bash step does not get that.
+#   3. A step-level shell cannot use expressions. "shell:" is read before
+#      ${{ }} is evaluated, so no `shell: ${{ ... }}`; pick the shell with a
+#      job-level default and switch per step by name only.
+#
+# Run it by hand from the Actions tab after setting up a runner, and again
+# after any change to the machine. The runner doctor (scripts/ci/runner-doctor.sh)
+# checks the same things from the machine itself, before any run.
+name: Runner check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: [self-hosted, windows]
+    defaults:
+      run:
+        # Fix 1: Git's bash by path, never "bash" from PATH.
+        shell: C:\Program Files\Git\bin\bash.exe -eo pipefail {0}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Which bash and which tools this job sees
+        run: |
+          echo "bash: $(command -v bash) ($(bash --version | head -n 1))"
+          echo "git:  $(command -v git) ($(git --version))"
+          echo "node: $(command -v node) ($(node --version 2>/dev/null || echo 'not found'))"
+          echo "gh:   $(command -v gh || echo 'not found')"
+      - name: A PowerShell step, with the policy set for this process
+        # Fix 2: the runner launches pwsh with its own policy for the step.
+        shell: pwsh
+        run: |
+          Write-Output "pwsh $($PSVersionTable.PSVersion) with policy $(Get-ExecutionPolicy -Scope Process)"
+          Write-Output "user $env:USERNAME on $env:COMPUTERNAME"
+      - name: Choose behavior with env, not with an expression in shell
+        # Fix 3: the condition goes in the script; the shell name stays fixed.
+        env:
+          OUTAGE: ${{ vars.CI_OUTAGE }}
+        run: |
+          if [ "$OUTAGE" = "1" ]; then echo "outage switch is on; a real job would skip the hosted-only steps"; else echo "outage switch is off"; fi

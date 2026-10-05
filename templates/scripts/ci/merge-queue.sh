@@ -61,6 +61,127 @@ if [ -z "$typecheck" ] && [ -f tsconfig.json ]; then typecheck="npx tsc --noEmit
 test_one=${QUEUE_TEST_COMMAND:-"node $here/run-test-file.mjs"}
 
 [ -f "$here/../worktrees-lib.sh" ] && . "$here/../worktrees-lib.sh"
+. "$here/run-lib.sh"
+tab=$(printf '\t')
+
+# Reading a run. One call for the run, one for its jobs, one for the
+# annotations of a job that is stuck, one for our runners. Bounded waits.
+wait_minutes=${QUEUE_WAIT_MINUTES:-60}
+flaky_dir=.scratch/queue
+mkdir -p "$flaky_dir" 2>/dev/null || true
+
+iso_epoch() { # ISO 8601 -> epoch seconds, GNU or BSD date
+  [ -n "$1" ] || { echo 0; return; }
+  date -u -d "$1" +%s 2>/dev/null || date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$1" +%s 2>/dev/null || echo 0
+}
+
+latest_run() { # BRANCH -> "id<TAB>status<TAB>conclusion"
+  gh run list --branch "$1" --limit 1 --json databaseId,status,conclusion --jq '.[0] | "\(.databaseId)\t\(.status)\t\(.conclusion // "")"' 2>/dev/null
+}
+
+jobs_of() { # RUN_ID -> one job per line for run_verdict
+  gh run view "$1" --json jobs --jq '.jobs[] | [.name, .status, (.conclusion // ""), (.startedAt // ""), .databaseId] | @tsv' 2>/dev/null \
+  | while IFS="$tab" read -r name status conc started jobid; do
+    ann=""
+    if [ "$status" != "completed" ]; then
+      ann=$(gh api "repos/{owner}/{repo}/check-runs/$jobid/annotations" --jq '[.[].message] | join("; ")' 2>/dev/null | tr '\t\n' '  ')
+    fi
+    printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$status" "$conc" "$(iso_epoch "$started")" "$ann"
+  done
+}
+
+idle_runners() { gh api 'repos/{owner}/{repo}/actions/runners' --jq '[.runners[] | select(.status == "online" and .busy == false)] | length' 2>/dev/null || echo 0; }
+
+github_status() { # one line when GitHub says Actions is degraded, else nothing
+  githubstatus_verdict "$(curl -s --max-time 5 https://www.githubstatus.com/api/v2/components.json 2>/dev/null)"
+}
+
+# diagnose RUN_ID -> prints one plain line about the run and returns:
+# 0 green, 1 failed, 2 pending, 3 outage, 4 canceled
+diagnose() {
+  d_jobs=$(jobs_of "$1")
+  d_verdict=$(run_verdict "$d_jobs" "$(date +%s)" "$(idle_runners)")
+  case "$d_verdict" in
+    green) return 0 ;;
+    pending) return 2 ;;
+    outage:*)
+      gs=$(github_status)
+      echo "GitHub Actions is down, not your code: ${d_verdict#outage: }${gs:+ ($gs)}"
+      return 3 ;;
+    canceled:*)
+      echo "The run you are waiting on was canceled (${d_verdict#canceled: }); re-running it."
+      return 4 ;;
+    failed:*)
+      echo "CI failed: ${d_verdict#failed: }"
+      return 1 ;;
+  esac
+}
+
+# record_flaky PR RUN_ID RESULT: keep the per-test record. On a failure,
+# the failing tests are read from the run's log; on a pass, the tests that
+# failed earlier on this PR are marked passed, which is what a flake is.
+record_flaky() {
+  rf_log=""; [ -f "$flaky_dir/flaky.tsv" ] && rf_log=$(cat "$flaky_dir/flaky.tsv")
+  rf_day=$(date -u +%Y-%m-%d)
+  if [ "$3" = failed ]; then
+    tests=$(failed_tests_from_log "$(gh run view "$2" --log-failed 2>/dev/null)")
+    [ -n "$tests" ] && echo "Failing tests: $(printf '%s\n' "$tests" | head -n 5 | tr '\n' ';' | sed 's/;$//')"
+  else
+    tests=$(printf '%s\n' "$rf_log" | awk -F'\t' -v pr="$1" '$2 == pr && $4 == "failed" { print $3 }' | awk '!seen[$0]++')
+  fi
+  for t in $(printf '%s\n' "$tests" | tr ' ' '\001'); do
+    t=$(printf '%s' "$t" | tr '\001' ' ')
+    rf_log=$(flaky_log_add "$rf_log" "$rf_day" "$1" "$t" "$3")
+  done
+  printf '%s\n' "$rf_log" > "$flaky_dir/flaky.tsv"
+  # A test that flaked twice gets an issue, once.
+  flaky_offenders "$rf_log" 2 | while IFS="$tab" read -r count test prs; do
+    [ -n "$test" ] || continue
+    grep -qxF "$test" "$flaky_dir/flaky-filed.txt" 2>/dev/null && continue
+    gh issue create --title "Flaky test: $test" --label "bug,state:ready" \
+      --body "This test failed and then passed on retry $count times, on pull requests $prs. The merge queue recorded it. An unreliable test is a bug, not weather: fix it or quarantine it with its own issue, do not re-run it again." >/dev/null 2>&1 \
+      && { printf '%s\n' "$test" >> "$flaky_dir/flaky-filed.txt"; echo "Filed an issue for the flaky test $test ($count flakes on $prs)."; }
+  done
+}
+
+# wait_for_run PR BRANCH: wait for the branch's latest run, saying plainly
+# what is happening. Returns 0 green, 1 red, 3 gave up.
+wait_for_run() {
+  w_start=$(date +%s); outage_on=no
+  while :; do
+    run=$(latest_run "$2"); run_id=${run%%	*}
+    [ -n "$run_id" ] || { echo "No run found for $2 yet."; sleep 30; continue; }
+    msg=$(diagnose "$run_id"); code=$?
+    [ -n "$msg" ] && echo "$msg"
+    case $code in
+      0) record_flaky "$1" "$run_id" passed
+         if [ "$outage_on" = yes ] && [ -n "$QUEUE_OUTAGE_OFF" ]; then sh -c "$QUEUE_OUTAGE_OFF" && echo "Outage switch off again."; fi
+         return 0 ;;
+      1) record_flaky "$1" "$run_id" failed; return 1 ;;
+      3) if [ "$outage_on" = no ] && [ -n "$QUEUE_OUTAGE_ON" ]; then sh -c "$QUEUE_OUTAGE_ON" && { outage_on=yes; echo "Outage switch on for this run."; }; fi ;;
+      4) gh run rerun "$run_id" >/dev/null 2>&1 || true ;;
+    esac
+    if [ $(( $(date +%s) - w_start )) -gt $((wait_minutes * 60)) ]; then
+      echo "Waited $wait_minutes minutes for run $run_id; giving up for now. Run the queue again later."
+      return 3
+    fi
+    sleep 30
+  done
+}
+
+# wait_quiet_main: do not merge while a run on main is in flight, so a
+# proof run on main is never canceled by the queue, and a manual run on
+# main can expect a quiet main.
+wait_quiet_main() {
+  q_start=$(date +%s)
+  while :; do
+    runs=$(gh run list --branch "$base" --limit 10 --json databaseId,headBranch,status,event --jq '.[] | [.databaseId, .headBranch, .status, .event] | @tsv' 2>/dev/null | sed "s/\t$base\t/\tmain\t/")
+    [ "$(main_in_flight "$runs")" = yes ] || return 0
+    [ $(( $(date +%s) - q_start )) -lt 1200 ] || { echo "A run on $base has been in flight for twenty minutes; merging anyway."; return 0; }
+    echo "Holding the merge: a run on $base is in flight."
+    sleep 30
+  done
+}
 
 # worktree_of BRANCH: the local worktree that has the branch checked out.
 worktree_of() {
@@ -101,7 +222,18 @@ serial_one() {
   pr_classes=$(classify_paths "$(git diff --name-only "$merge_base" "$head")" "$rules")
   main_classes=$(classify_paths "$(git diff --name-only "$merge_base" "origin/$base")" "$rules")
   if ! gh pr checks "$pr" >/dev/null 2>&1; then
-    batch_line "$pr" "waiting" "not green yet, nothing merged"
+    hb=$(gh pr view "$pr" --json headRefName -q .headRefName 2>/dev/null || true)
+    run=$(latest_run "$hb"); run_id=${run%%	*}
+    why="not green yet, nothing merged"
+    if [ -n "$run_id" ]; then
+      msg=$(diagnose "$run_id"); code=$?
+      case $code in
+        1) record_flaky "$pr" "$run_id" failed; why="$msg" ;;
+        3) why="$msg" ;;
+        4) gh run rerun "$run_id" >/dev/null 2>&1 || true; why="$msg" ;;
+      esac
+    fi
+    batch_line "$pr" "waiting" "$why"
     return 0
   fi
   if [ "$(needs_rerun "$pr_classes" "$main_classes")" = yes ]; then
@@ -111,6 +243,8 @@ serial_one() {
     return 0
   fi
   head_branch=$(gh pr view "$pr" --json headRefName -q .headRefName 2>/dev/null || true)
+  record_flaky "$pr" "" passed
+  wait_quiet_main
   gh pr merge "$pr" --squash >/dev/null
   batch_line "$pr" "merged serially" "main moved only outside its classes"
   tidy_worktree "$head_branch"
@@ -201,7 +335,11 @@ body=$(batch_pr_body "$carried")
 batch_pr=$(gh pr create --base "$base" --head "$branch" --title "Batch $day: $(printf '%s' "$carried" | wc -l | tr -d ' ') pull requests" --body "$body" --json number -q .number 2>/dev/null \
   || gh pr create --base "$base" --head "$branch" --title "Batch $day" --body "$body" | sed 's#.*/##')
 echo "batch PR #$batch_pr opened; waiting for the one full CI run"
-gh pr checks "$batch_pr" --watch >/dev/null 2>&1 || { echo "The batch run went red; nothing merged. Fix it on $branch or drop a PR and run again."; exit 1; }
+if ! wait_for_run "$batch_pr" "$branch"; then
+  echo "The batch run is not green; nothing merged. Fix it on $branch or drop a PR and run again."
+  exit 1
+fi
+wait_quiet_main
 gh pr merge "$batch_pr" --merge >/dev/null
 echo "batch PR #$batch_pr merged into $base with a merge commit"
 for pr in $(printf '%s' "$carried" | cut -f1); do

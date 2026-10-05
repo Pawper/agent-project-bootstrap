@@ -152,6 +152,10 @@ jobs:
     # job still runs when they are offline: runs-on: [self-hosted, linux] is
     # one label set; GitHub picks the first idle runner that matches, so use
     # a runner group with a hosted fallback rather than a label alone.
+    # On a self-hosted Windows runner, copy the job-level default shell from
+    # runner-check.yml (Git's bash by path), keep PowerShell steps on
+    # "shell: pwsh", and never put an expression in "shell:". Run
+    # scripts/ci/runner-doctor.sh on the machine first.
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
