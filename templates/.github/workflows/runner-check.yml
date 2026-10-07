@@ -26,7 +26,8 @@ jobs:
     defaults:
       run:
         # Fix 1: Git's bash by path, never "bash" from PATH.
-        shell: C:\Program Files\Git\bin\bash.exe -eo pipefail {0}
+        # The short path: the runner splits this line on spaces, so "Program Files" breaks it.
+        shell: 'C:\PROGRA~1\Git\bin\bash.exe --noprofile --norc -eo pipefail {0}'
     steps:
       - uses: actions/checkout@v4
       - name: Which bash and which tools this job sees
