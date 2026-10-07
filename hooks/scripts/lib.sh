@@ -351,3 +351,19 @@ state_label_reason() {
       if (!found) { print "gh issue create"; exit }
     }'
 }
+
+# project_flag_reason COMMAND
+# For a project whose state is a field on its GitHub Project rather than a
+# label (.claude/issue-state.txt says "project"): print "gh issue create" when
+# the command creates an issue without --project, so it lands on the board
+# where its state is set. Print nothing otherwise, or for --web.
+project_flag_reason() {
+  split_commands "$1" | awk '
+    {
+      n = split($0, t, /[ 	]+/)
+      if (t[1] != "gh" || t[2] != "issue" || t[3] != "create") next
+      found = 0
+      for (j = 4; j <= n; j++) if (t[j] == "--web" || t[j] == "-w" || t[j] == "--project" || t[j] == "-p" || t[j] ~ /^--project=/) found = 1
+      if (!found) { print "gh issue create"; exit }
+    }'
+}

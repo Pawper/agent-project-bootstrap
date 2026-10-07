@@ -173,6 +173,15 @@ eq "a quoted label with a space but no state" "gh issue create" "$(state_label_r
 eq "gh issue list is fine" "" "$(state_label_reason 'gh issue list')"
 eq "create in a later command" "gh issue create" "$(state_label_reason 'git push && gh issue create -t x')"
 
+printf '
+# project_flag_reason
+'
+eq "no --project" "gh issue create" "$(project_flag_reason 'gh issue create -t x -b y')"
+eq "--project" "" "$(project_flag_reason 'gh issue create -t x --project "Retro Jam"')"
+eq "-p" "" "$(project_flag_reason 'gh issue create -t x -p Board')"
+eq "a state label alone is not enough here" "gh issue create" "$(project_flag_reason 'gh issue create -t x -l state:ready')"
+eq "--web" "" "$(project_flag_reason 'gh issue create --web')"
+
 printf '\n# batch_merge_reason\n'
 eq "three PRs with no flag" "3" "$(batch_merge_reason 'sh scripts/ci/merge-queue.sh 41 42 45')"
 eq "three PRs with --batch" "" "$(batch_merge_reason 'sh scripts/ci/merge-queue.sh --batch 41 42 45')"
