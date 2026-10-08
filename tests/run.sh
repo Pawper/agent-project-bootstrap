@@ -305,6 +305,8 @@ eq "a tool whose folder is on the machine PATH" "ok" "$(tool_on_machine_path '/c
 eq "a tool missing from the machine PATH" "warn" "$(tool_on_machine_path '/c/Users/me/AppData/Roaming/npm/node' 'C:\Windows;C:\Program Files\Git\cmd')"
 eq "a restricted machine policy warns" "warn" "$(policy_verdict 'MachinePolicy=Undefined UserPolicy=Undefined Process=Undefined CurrentUser=Undefined LocalMachine=Restricted')"
 eq "an open policy is fine" "ok" "$(policy_verdict 'MachinePolicy=Undefined LocalMachine=RemoteSigned')"
+eq "a shell that sets NoDefaultCurrentDirectoryInExePath warns" "warn" "$(exepath_verdict 1)"
+eq "a shell that does not set it is fine" "ok" "$(exepath_verdict '')"
 
 printf '\n# board digest\n'
 . "$root/scripts/board/board-lib.sh"

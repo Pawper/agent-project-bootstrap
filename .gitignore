@@ -7,3 +7,4 @@ tests/*.unused
 .claude/session-brief.json
 .claude/project-drive.json*
 assets/icon.html
+.scratch/

@@ -14,12 +14,20 @@ One runner is a queue of one: a slow job makes every other job wait, and when it
 
 ## Keep the runner's environment clean
 
-A runner picks up whatever environment it starts with, and a setting meant for one tool can break another. One project had every Android build fail because the runner had picked up a machine-wide setting meant for something else. Keep tool settings out of the machine environment and out of the runner's `.env` file; set what a job needs in the workflow's `env:` block, where it is visible and scoped to that job. The `Runner check` workflow prints what a job actually sees.
+A runner picks up whatever environment it starts with, and so does every job it launches. Keep tool settings out of the machine environment and out of the runner's `.env` file; set what a job needs in the workflow's `env:` block, where it is visible and scoped to that job. The `Runner check` workflow prints what a job actually sees.
+
+**The one that bit a real project: `NoDefaultCurrentDirectoryInExePath`.** Git Bash sets it to 1. A runner started with `run.cmd` from a Git Bash window inherits it, and so does every job. With it set, the Windows command prompt will not run a program from the current folder by its bare name. An Android step that ran `gradlew.bat` failed with "'gradlew.bat' is not recognized as an internal or external command", while the `if not exist gradlew.bat` check just before it passed, because that looks for a file, not a program. Three fixes, any one of which holds:
+
+1. **Run the runner as a service** (`add-runner.ps1`). A service never inherits a shell's environment. This is the fix.
+2. **Call programs from the repository with a path**: `.\gradlew.bat`, not `gradlew.bat`. That works whatever the setting, and is right in the workflow regardless.
+3. **Clear it at the start of a cmd step**: `set NoDefaultCurrentDirectoryInExePath=`.
+
+To start a runner by hand from Git Bash anyway, strip it first: `env -u NoDefaultCurrentDirectoryInExePath cmd //c run.cmd`. The doctor warns when the shell you run it from sets the variable.
 
 ## Before the first run, and after any change to the machine
 
-1. `sh scripts/ci/runner-doctor.sh` on the machine: which bash a step gets, whether Git, Node and gh are on the machine PATH, PowerShell's execution policy, and whether each runner is online.
-2. The `Runner check` workflow from the Actions tab: Git's bash named by path, a PowerShell step, and the tools the job sees.
+1. `sh scripts/ci/runner-doctor.sh` on the machine: which bash a step gets, whether Git, Node and gh are on the machine PATH, whether the shell you are in would leak `NoDefaultCurrentDirectoryInExePath` into a runner, PowerShell's execution policy, and whether each runner is online.
+2. The `Runner check` workflow from the Actions tab: Git's bash named by path, a PowerShell step, the tools the job sees, and a cmd step that says whether jobs inherited `NoDefaultCurrentDirectoryInExePath` and runs a program from the current folder by path.
 
 ## When it goes wrong anyway
 
