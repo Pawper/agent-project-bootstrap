@@ -1,0 +1,6 @@
+# Numbered files that must keep their order, and where they live. One per
+# line: KIND GLOB. `sh scripts/next-number.sh KIND` reserves the next free
+# number across main and every open pull request; the numbering check in CI
+# fails when two files share a number. For anything that does not have to
+# run in order, use the issue number instead.
+migration migrations/*.sql

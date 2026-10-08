@@ -671,6 +671,85 @@ SETUP.md' "$own_pats")"
 eq "crlf found" "yes" "$(has_crlf "$(printf 'a\r\nb')")"
 eq "lf only" "" "$(has_crlf "$(printf 'a\nb')")"
 
+printf '\n# merging only through the queue\n'
+eq "a direct merge" "gh pr merge" "$(direct_merge_reason 'gh pr merge 41 --squash')"
+eq "a direct merge after cd" "gh pr merge" "$(direct_merge_reason 'cd ../wt && gh pr merge 41 --merge --delete-branch')"
+eq "turning auto-merge off is allowed" "" "$(direct_merge_reason 'gh pr merge 41 --disable-auto')"
+eq "the queue itself is not a direct merge" "" "$(direct_merge_reason 'sh scripts/ci/merge-queue.sh --serial 41')"
+eq "viewing a pull request is not a merge" "" "$(direct_merge_reason 'gh pr view 41')"
+eq "a drain names its mode" "" "$(batch_merge_reason 'sh scripts/ci/merge-queue.sh --drain')"
+eq "a drain with more than two numbers is still named" "" "$(batch_merge_reason 'sh scripts/ci/merge-queue.sh --drain 1 2 3')"
+
+printf '\n# drain\n'
+. "$root/templates/scripts/ci/batch-lib.sh"
+open='41	false	MERGEABLE	green	main
+42	false	MERGEABLE	pending	main
+43	true	MERGEABLE	green	main
+44	false	CONFLICTING	green	main
+45	false	MERGEABLE	green	release
+46	false	UNKNOWN	green	main
+47	false	MERGEABLE	red	main
+48	false	MERGEABLE	pending	main'
+eq "green, not draft, not conflicting, aimed at main" "41
+46" "$(drain_candidates "$open" main)"
+eq "a pull request already tried is not picked again" "46" "$(drain_candidates "$open" main '41')"
+eq "running ones are counted, drafts and other bases are not" "2" "$(drain_waiting "$open" main)"
+eq "nothing open, nothing picked" "" "$(drain_candidates '' main)"
+
+printf '\n# numbering\n'
+. "$root/templates/scripts/ci/numbering-lib.sh"
+eq "the glob for a kind" "supabase/migrations/*.sql" "$(numbering_glob '# note
+migration supabase/migrations/*.sql
+seed seed/*.json' migration)"
+eq "an unknown kind" "" "$(numbering_glob 'migration m/*.sql' setup)"
+paths='supabase/migrations/0021_chime_volume.sql
+supabase/migrations/0022_station_chime_volume.sql
+supabase/migrations/README.md
+docs/0099_not_a_migration.sql
+supabase\migrations\0023_testing_program.sql'
+eq "numbers of matching files, padding kept, either slash" "0021
+0022
+0023" "$(numbers_in "$paths" 'supabase/migrations/*.sql')"
+eq "the next free number" "0024" "$(next_free_number "$(numbers_in "$paths" 'supabase/migrations/*.sql')")"
+eq "the first number when there are none" "0001" "$(next_free_number '')"
+eq "padding follows the widest number" "00008" "$(next_free_number '00007
+3')"
+eq "two files sharing a number" "0022	0022_a.sql 0022_b.sql" "$(duplicate_numbers 'm/0021_x.sql
+m/0022_a.sql
+m/0022_b.sql' 'm/*.sql')"
+eq "22 and 0022 are the same number" "0022	22_a.sql 0022_b.sql" "$(duplicate_numbers 'm/22_a.sql
+m/0022_b.sql' 'm/*.sql')"
+eq "no duplicates, nothing" "" "$(duplicate_numbers 'm/0021_x.sql
+m/0022_y.sql' 'm/*.sql')"
+eq "running task numbers are found" "## 14. Add the exporter
+- [ ] 7: Fix the chime
+T12) Rename the page
+7p. Run the migration" "$(running_task_lines '## 14. Add the exporter
+- [ ] 7: Fix the chime
+T12) Rename the page
+7p. Run the migration
+## #231 Add the exporter
+- [ ] #232 Fix the chime
+Some prose with 3. in the middle')"
+eq "issue-numbered tasks pass" "" "$(running_task_lines '## #231 Add the exporter
+- [x] #45 Ship it')"
+manual=$(cat "$fx/setup-manual.md")
+eq "a migration still not run" "0024_station_chimes_off.sql	not yet run" "$(pending_migrations "$manual" 'supabase/migrations/0024_station_chimes_off.sql
+src/chimes.ts' 'supabase/migrations/*.sql')"
+eq "a migration marked done passes, even with the instruction text" "" "$(pending_migrations "$manual" 'supabase/migrations/0007_schedule_versions.sql' 'supabase/migrations/*.sql')"
+eq "a migration the manual never mentions" "0025_new.sql	not in the manual" "$(pending_migrations "$manual" 'supabase/migrations/0025_new.sql' 'supabase/migrations/*.sql')"
+eq "no migration added, nothing" "" "$(pending_migrations "$manual" 'src/a.ts' 'supabase/migrations/*.sql')"
+
+printf '\n# runner watch\n'
+runs=$(printf '11\tCI\tfeature\tqueued\t1000\n12\tCI\tmain\tqueued\t1500\n13\tCI\tother\tin_progress\t100\n14\tCI\tx\tqueued\t1900\n')
+eq "runs queued past ten minutes, oldest first" "11	CI	feature	16
+12	CI	main	8" "$(stuck_runs "$runs" 2000 5)"
+eq "nothing stuck" "" "$(stuck_runs "$runs" 1100 10)"
+eq "an offline runner and a lone online one" "Runner build-2 is offline.
+Only 1 of 2 self-hosted runner(s) online; one runner makes every job wait for the last." "$(runner_problems "$(printf 'build-1\tonline\tfalse\nbuild-2\toffline\tfalse\n')")"
+eq "two online runners are fine" "" "$(runner_problems "$(printf 'build-1\tonline\ttrue\nbuild-2\tonline\tfalse\n')")"
+eq "no runners listed, nothing said" "" "$(runner_problems '')"
+
 printf '\n# owner console (node)\n'
 if command -v node >/dev/null 2>&1; then
   if node --test --test-reporter tap "$root"/console/test/*.test.js >"$root/tests/console.log" 2>&1; then

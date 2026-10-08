@@ -93,3 +93,26 @@ main_in_flight() {
     NF >= 3 && $2 == "main" && ($3 == "queued" || $3 == "in_progress" || $3 == "waiting" || $3 == "requested") { f = 1 }
     END { print f ? "yes" : "no" }'
 }
+
+# stuck_runs RUNS NOW [MINUTES]
+# RUNS is one run per line: "id<TAB>workflow<TAB>branch<TAB>status<TAB>created_epoch".
+# Print the runs that have sat queued for more than MINUTES (default ten),
+# oldest first: "id<TAB>workflow<TAB>branch<TAB>minutes". A run that waits
+# that long for a runner is a runner problem, not a slow test.
+stuck_runs() {
+  printf '%s\n' "$1" | tr -d '\r' | awk -F'\t' -v now="$2" -v lim="${3:-10}" '
+    NF >= 5 && ($4 == "queued" || $4 == "waiting" || $4 == "pending") && ($5 + 0) > 0 {
+      m = int((now - $5) / 60)
+      if (m > lim) printf "%d\t%s\t%s\t%s\t%d\n", m, $1, $2, $3, m
+    }' | sort -rn | cut -f2-
+}
+
+# runner_problems RUNNERS
+# RUNNERS is one self-hosted runner per line: "name<TAB>status<TAB>busy".
+# Print one plain line per runner that is offline, and one line when fewer
+# than two are online, since a single runner is a queue of one.
+runner_problems() {
+  printf '%s\n' "$1" | tr -d '\r' | awk -F'\t' '
+    NF >= 2 { total++; if ($2 == "online") on++; else printf "Runner %s is %s.\n", $1, $2 }
+    END { if (total > 0 && on < 2) printf "Only %d of %d self-hosted runner(s) online; one runner makes every job wait for the last.\n", on, total }'
+}

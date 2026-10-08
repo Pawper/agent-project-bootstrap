@@ -38,6 +38,8 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --batch) mode=batch ;;
     --serial) mode=serial ;;
+    --drain) mode=drain ;;
+    --rounds) shift; rounds=$1 ;;
     --base) shift; base=$1 ;;
     --help|-h) sed -n '2,25p' "$0"; exit 0 ;;
     *[!0-9]*) [ -z "$prs" ] || base=$1 ;;
@@ -45,8 +47,54 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+# Drain: merge everything that is green, round after round, so nobody
+# writes their own loop. Each round reads every open pull request in one
+# call, merges the green ones (as a batch when more than two), and waits
+# for the running ones. It stops when nothing is green and nothing is
+# running, when nothing new turned green, after --rounds rounds (default
+# six), or after QUEUE_DRAIN_MINUTES (default ninety).
+if [ "$mode" = drain ]; then
+  rounds=${rounds:-6}
+  drain_minutes=${QUEUE_DRAIN_MINUTES:-90}
+  d_start=$(date +%s); round=0; tried=""
+  while [ "$round" -lt "$rounds" ]; do
+    round=$((round + 1))
+    open=$(gh pr list --state open --limit 100 --json number,isDraft,mergeable,statusCheckRollup,baseRefName --jq '
+      .[] | [ .number, .isDraft, .mergeable,
+        ( [ .statusCheckRollup[]? | (.conclusion // .state // "") ] as $s
+          | if ($s | length) == 0 then "none"
+            elif any($s[]; test("FAILURE|ERROR|TIMED_OUT|CANCELLED|ACTION_REQUIRED")) then "red"
+            elif any($s[]; . == "" or test("PENDING|EXPECTED|QUEUED|IN_PROGRESS")) then "pending"
+            else "green" end ),
+        .baseRefName ] | @tsv' 2>/dev/null)
+    pick=$(drain_candidates "$open" "$base" "$tried")
+    waiting=$(drain_waiting "$open" "$base")
+    n=$(printf '%s\n' "$pick" | sed '/^$/d' | wc -l | tr -d ' ')
+    elapsed=$(( $(date +%s) - d_start ))
+    if [ "$n" -eq 0 ]; then
+      if [ "$waiting" -gt 0 ] && [ "$elapsed" -lt $((drain_minutes * 60)) ]; then
+        echo "round $round: nothing new is green; $waiting pull request(s) still running CI, waiting two minutes."
+        sleep 120
+        continue
+      fi
+      if [ "$waiting" -gt 0 ]; then echo "round $round: nothing new is green, and $waiting still running after $drain_minutes minutes; stopping."
+      else echo "round $round: nothing left to merge."; fi
+      break
+    fi
+    echo "round $round: $n green pull request(s): $(printf '%s' "$pick" | tr '\n' ' ')"
+    if [ "$n" -gt 2 ]; then sh "$0" --batch --base "$base" $pick; else sh "$0" --serial --base "$base" $pick; fi
+    tried="$tried $(printf '%s' "$pick" | tr '\n' ' ')"
+    if [ $(( $(date +%s) - d_start )) -ge $((drain_minutes * 60)) ]; then
+      echo "Drained for $drain_minutes minutes; stopping. Run --drain again to go on."
+      break
+    fi
+  done
+  echo "queue done"
+  exit 0
+fi
+
 prs=$(batch_order $prs)
-[ -n "$prs" ] || { echo "Usage: sh scripts/ci/merge-queue.sh [--batch | --serial] [--base BRANCH] PR..." >&2; exit 2; }
+[ -n "$prs" ] || { echo "Usage: sh scripts/ci/merge-queue.sh [--batch | --serial | --drain] [--base BRANCH] PR..." >&2; exit 2; }
 count=$(printf '%s\n' "$prs" | wc -l | tr -d ' ')
 if [ -z "$mode" ]; then
   if [ "$count" -gt 2 ]; then
@@ -202,6 +250,26 @@ folder_blocks() {
     "$(printf '%s\n' "$fb_dirty" | wc -l | tr -d ' ')" "$(printf '%s\n' "$fb_dirty" | head -n 1)"
 }
 
+# migration_blocks PR: print why a PR may not merge yet when it adds a
+# migration that its own copy of the manual does not mark as done. A change
+# that needs a migration run merges after the run, not before. The manual
+# is SETUP.md or the "manual" line in setup-paths.txt; migrations are the
+# "migration" kind in .claude/numbering.txt.
+. "$here/numbering-lib.sh"
+migration_blocks() {
+  [ -f .claude/numbering.txt ] || return 0
+  mb_glob=$(numbering_glob "$(cat .claude/numbering.txt)" migration)
+  [ -n "$mb_glob" ] || return 0
+  mb_manual=SETUP.md
+  [ -f "$here/setup-paths.txt" ] && mb_manual=$(setup_manual "$(cat "$here/setup-paths.txt")")
+  git fetch -q origin "$base" "pull/$1/head" 2>/dev/null || return 0
+  mb_head=$(git rev-parse FETCH_HEAD)
+  mb_added=$(git diff --name-only --diff-filter=A "origin/$base...$mb_head" 2>/dev/null)
+  mb_pending=$(pending_migrations "$(git show "$mb_head:$mb_manual" 2>/dev/null)" "$mb_added" "$mb_glob")
+  [ -n "$mb_pending" ] || return 0
+  printf '%s\n' "$mb_pending" | head -n 1 | awk -F'\t' -v m="$mb_manual" '{ printf "it adds migration %s, which is %s in %s; run it, mark it Done in the manual on this branch, then queue it again\n", $1, $2, m }'
+}
+
 # sync_worktree BRANCH: never move a branch from outside its worktree. When
 # the queue advances a branch on the remote, bring the worktree's files
 # along, so the folder does not look full of edits it never made.
@@ -214,7 +282,7 @@ sync_worktree() {
 # serial_one PR: today's behavior for one PR.
 serial_one() {
   pr=$1
-  why=$(folder_blocks "$pr")
+  why=$(folder_blocks "$pr"); [ -n "$why" ] || why=$(migration_blocks "$pr")
   if [ -n "$why" ]; then batch_line "$pr" "refused" "$why"; return 0; fi
   git fetch -q origin "$base" "pull/$pr/head"
   head=$(gh pr view "$pr" --json headRefOid -q .headRefOid)
@@ -278,7 +346,7 @@ carried=""
 dropped=""
 good=$(git rev-parse HEAD)
 for pr in $prs; do
-  why=$(folder_blocks "$pr")
+  why=$(folder_blocks "$pr"); [ -n "$why" ] || why=$(migration_blocks "$pr")
   if [ -n "$why" ]; then batch_line "$pr" "refused" "$why"; continue; fi
   git fetch -q origin "pull/$pr/head" || { batch_line "$pr" "dropped" "could not fetch it"; dropped="$dropped $pr"; continue; }
   head=$(git rev-parse FETCH_HEAD)

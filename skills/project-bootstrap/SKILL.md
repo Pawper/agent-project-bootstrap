@@ -82,6 +82,9 @@ Write these into the project's CLAUDE.md (and AGENTS.md as a copy for other tool
 - A clean folder is part of done: before reporting finished or opening a pull request, `git status` shows nothing outside the one scratch folder, `.scratch/`. Images and build output never go in a worktree. Stop every process you started from it.
 - A fix to shared code gets its own issue and its own pull request.
 - Work always has an ending: never move a branch from outside its worktree, never add a detached worktree, never close a pull request without a comment saying why or what replaced it.
+- Merge only through the queue; a direct merge is refused. Its drain mode merges everything green, round after round, so nobody writes a loop.
+- Never take a running number in a shared place: name tasks and setup steps by issue number, and reserve a migration number across main and every open pull request. A change that adds a migration merges after it has run.
+- Use `git -C PATH` rather than `cd PATH &&` in a chained command.
 - Worktrees live in one folder and go when their pull request merges. Removing the worktree of a merged branch is the one cleanup allowed, through the worktree script, because the branch keeps the work.
 - Dispatch an agent with a model that fits its task: a light model for a lookup, a middle one for routine work, a heavy one only for hard work.
 
@@ -127,7 +130,7 @@ mechanical check: "report what was not done" and "stop every shell." Say so in C
   must land alone. A PR in a batch has its own CI run cancelled; it competes for runners and proves nothing
   the batch does not.
 - No path filters that can skip a run on an update (a merge from main that touches only docs must still start one, or the queue waits forever).
-- A fallback runner when the self-hosted ones are offline.
+- A fallback runner when the self-hosted ones are offline. Each self-hosted runner installed as a service, at least two of them, and an hourly watch on a hosted runner that speaks when one is offline or a run sits queued for ten minutes.
 - The queue reads the run it waits on and says what is happening: GitHub's outage told apart from our
   failure, the failing check by name, a canceled run re-run, a merge held while a run on main is in flight.
 - An unreliable test is a bug, not weather: the queue records a test that failed and then passed, and files an

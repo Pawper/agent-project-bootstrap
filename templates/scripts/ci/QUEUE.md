@@ -12,6 +12,24 @@ sh scripts/ci/merge-queue.sh --batch 41 42 45 47
 
 What happens, in order: an integration branch named for the day is cut from main; each pull request is merged with a merge commit, so the originals show as merged and close their issues; after each merge the type-check runs and then only the unit and component test files that pull request touched, one file at a time; a pull request that conflicts or goes red is dropped with one printed line and the branch goes back to the last good merge; the status page is rebuilt; one pull request is opened whose body carries a Closes line per pull request; the one full run happens; the batch merges with a merge commit; the dropped ones go through the serial queue afterward.
 
+## Drain: the queue that keeps going
+
+Most of the time, nobody should pick the numbers. `--drain` reads every open pull request in one call, merges the green ones (as a batch when more than two), waits while others are still running CI, and goes round again until nothing is left, nothing new turned green, six rounds have passed, or ninety minutes have:
+
+```bash
+sh scripts/ci/merge-queue.sh --drain
+```
+
+That is the command for "merge what is ready", so no agent writes its own loop. To keep it going through a working session, run it on a timer: `/loop 20m sh scripts/ci/merge-queue.sh --drain`. A pull request a round could not merge is not tried again in that drain; its line says why.
+
+## Only through the queue
+
+A direct `gh pr merge` is refused by the plugin's merge hook in any project that has this script, with one line pointing here. The queue is what checks the folder, waits for a quiet main, batches, cleans up the worktree and records flaky tests; a merge that skips it skips all of that.
+
+## A change that needs a migration run
+
+A pull request that adds a migration merges only after the migration has run. The queue reads the manual on the pull request's own branch, and refuses while the migration's line still says "Not yet run" or no line mentions it. Run it, change the line to "Done" with the date on that branch, and queue it again. Migrations are the `migration` kind in `.claude/numbering.txt`; the manual is `SETUP.md` or the `manual` line in `setup-paths.txt`.
+
 ## When to go serial
 
 By choice, for a change that must land alone: a migration, a change to the deploy, anything whose failure you want to see on its own. Say so:

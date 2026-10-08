@@ -306,6 +306,23 @@ workflow_model_reason() {
 # Print the number of PRs when the command runs merge-queue.sh with more
 # than two PR numbers and names neither --batch nor --serial. Print nothing
 # otherwise: a named mode is always allowed, and so are two or fewer PRs.
+# direct_merge_reason COMMAND
+# Print "gh pr merge" when the command merges a pull request directly with
+# gh, outside the merge queue. Turning auto-merge off is allowed. Print
+# nothing otherwise. The caller decides whether the project has a queue.
+direct_merge_reason() {
+  split_commands "$1" | awk '
+    {
+      line = $0
+      gsub(/["'\'']/, "", line)
+      n = split(line, t, /[ \t]+/)
+      if (t[1] != "gh" || t[2] != "pr" || t[3] != "merge") next
+      off = 0
+      for (i = 4; i <= n; i++) if (t[i] == "--disable-auto") off = 1
+      if (!off) { print "gh pr merge"; exit }
+    }'
+}
+
 batch_merge_reason() {
   split_commands "$1" | awk '
     {
@@ -317,7 +334,7 @@ batch_merge_reason() {
       if (!found) next
       prs = 0; flagged = 0
       for (i = 1; i <= n; i++) {
-        if (t[i] == "--batch" || t[i] == "--serial") flagged = 1
+        if (t[i] == "--batch" || t[i] == "--serial" || t[i] == "--drain") flagged = 1
         else if (t[i] ~ /^[0-9]+$/) prs++
       }
       if (prs > 2 && !flagged) { print prs; exit }
