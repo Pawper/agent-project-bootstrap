@@ -20,7 +20,7 @@ Most of the time, nobody should pick the numbers. `--drain` reads every open pul
 sh scripts/ci/merge-queue.sh --drain
 ```
 
-That is the command for "merge what is ready", so no agent writes its own loop. To keep it going through a working session, run it on a timer: `/loop 20m sh scripts/ci/merge-queue.sh --drain`. A pull request a round could not merge is not tried again in that drain; its line says why.
+That is the command for "merge what is ready", so no agent writes its own loop. To keep it going through a working session, run it on a timer: `/loop 20m sh scripts/ci/merge-queue.sh --drain`. A pull request a round could not merge is not tried again in that drain; its line says why. A red pull request gets one retry of its failed jobs. When the drain ends, every pull request that conflicts with main or failed twice is listed under "Needs attention" and the drain exits non-zero, so an agent running it on a timer is woken by the failure instead of reading past a log line.
 
 ## Only through the queue
 

@@ -19,7 +19,15 @@ if [ -f .claude/numbering.txt ]; then
   files=$(git ls-tree -r --name-only "$head")
   tr -d '\r' < .claude/numbering.txt | while IFS= read -r line; do
     case "$line" in ''|'#'*) continue ;; esac
-    kind=${line%% *}; glob=$(numbering_glob "$line" "$kind")
+    kind=${line%% *}; glob=$(numbering_glob "$line" "$kind"); prefix=$(numbering_prefix "$line" "$kind")
+    if [ -n "$prefix" ]; then
+      dups=$(duplicate_ids "$(git show "$head:$glob" 2>/dev/null)" "$prefix")
+      if [ -n "$dups" ]; then
+        echo "$glob defines $(printf '%s' "$dups" | tr '\n' ' ')twice; two pull requests took the same $kind number. Renumber the newer one with: sh scripts/next-number.sh $kind" >&2
+        echo fail
+      fi
+      continue
+    fi
     dups=$(duplicate_numbers "$files" "$glob")
     if [ -n "$dups" ]; then
       printf '%s\n' "$dups" | while IFS="$(printf '\t')" read -r num names; do

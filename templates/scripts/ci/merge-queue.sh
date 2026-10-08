@@ -47,54 +47,8 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
-# Drain: merge everything that is green, round after round, so nobody
-# writes their own loop. Each round reads every open pull request in one
-# call, merges the green ones (as a batch when more than two), and waits
-# for the running ones. It stops when nothing is green and nothing is
-# running, when nothing new turned green, after --rounds rounds (default
-# six), or after QUEUE_DRAIN_MINUTES (default ninety).
-if [ "$mode" = drain ]; then
-  rounds=${rounds:-6}
-  drain_minutes=${QUEUE_DRAIN_MINUTES:-90}
-  d_start=$(date +%s); round=0; tried=""
-  while [ "$round" -lt "$rounds" ]; do
-    round=$((round + 1))
-    open=$(gh pr list --state open --limit 100 --json number,isDraft,mergeable,statusCheckRollup,baseRefName --jq '
-      .[] | [ .number, .isDraft, .mergeable,
-        ( [ .statusCheckRollup[]? | (.conclusion // .state // "") ] as $s
-          | if ($s | length) == 0 then "none"
-            elif any($s[]; test("FAILURE|ERROR|TIMED_OUT|CANCELLED|ACTION_REQUIRED")) then "red"
-            elif any($s[]; . == "" or test("PENDING|EXPECTED|QUEUED|IN_PROGRESS")) then "pending"
-            else "green" end ),
-        .baseRefName ] | @tsv' 2>/dev/null)
-    pick=$(drain_candidates "$open" "$base" "$tried")
-    waiting=$(drain_waiting "$open" "$base")
-    n=$(printf '%s\n' "$pick" | sed '/^$/d' | wc -l | tr -d ' ')
-    elapsed=$(( $(date +%s) - d_start ))
-    if [ "$n" -eq 0 ]; then
-      if [ "$waiting" -gt 0 ] && [ "$elapsed" -lt $((drain_minutes * 60)) ]; then
-        echo "round $round: nothing new is green; $waiting pull request(s) still running CI, waiting two minutes."
-        sleep 120
-        continue
-      fi
-      if [ "$waiting" -gt 0 ]; then echo "round $round: nothing new is green, and $waiting still running after $drain_minutes minutes; stopping."
-      else echo "round $round: nothing left to merge."; fi
-      break
-    fi
-    echo "round $round: $n green pull request(s): $(printf '%s' "$pick" | tr '\n' ' ')"
-    if [ "$n" -gt 2 ]; then sh "$0" --batch --base "$base" $pick; else sh "$0" --serial --base "$base" $pick; fi
-    tried="$tried $(printf '%s' "$pick" | tr '\n' ' ')"
-    if [ $(( $(date +%s) - d_start )) -ge $((drain_minutes * 60)) ]; then
-      echo "Drained for $drain_minutes minutes; stopping. Run --drain again to go on."
-      break
-    fi
-  done
-  echo "queue done"
-  exit 0
-fi
-
 prs=$(batch_order $prs)
-[ -n "$prs" ] || { echo "Usage: sh scripts/ci/merge-queue.sh [--batch | --serial | --drain] [--base BRANCH] PR..." >&2; exit 2; }
+[ -n "$prs" ] || [ "$mode" = drain ] || { echo "Usage: sh scripts/ci/merge-queue.sh [--batch | --serial | --drain] [--base BRANCH] PR..." >&2; exit 2; }
 count=$(printf '%s\n' "$prs" | wc -l | tr -d ' ')
 if [ -z "$mode" ]; then
   if [ "$count" -gt 2 ]; then
@@ -324,6 +278,72 @@ tidy_worktree() {
   [ -n "$1" ] && [ -f "$here/../worktrees.sh" ] || return 0
   sh "$here/../worktrees.sh" prune --apply --branch "$1" 2>/dev/null | grep '^removed' || true
 }
+
+# Drain: merge everything that is green, round after round, so nobody
+# writes their own loop. Each round reads every open pull request in one
+# call, merges the green ones (as a batch when more than two), and waits
+# for the running ones. It stops when nothing is green and nothing is
+# running, when nothing new turned green, after --rounds rounds (default
+# six), or after QUEUE_DRAIN_MINUTES (default ninety).
+if [ "$mode" = drain ]; then
+  rounds=${rounds:-6}
+  drain_minutes=${QUEUE_DRAIN_MINUTES:-90}
+  d_start=$(date +%s); round=0; tried=""; retried=""; attention=""
+  while [ "$round" -lt "$rounds" ]; do
+    round=$((round + 1))
+    open=$(gh pr list --state open --limit 100 --json number,isDraft,mergeable,statusCheckRollup,baseRefName --jq '
+      .[] | [ .number, .isDraft, .mergeable,
+        ( [ .statusCheckRollup[]? | (.conclusion // .state // "") ] as $s
+          | if ($s | length) == 0 then "none"
+            elif any($s[]; test("FAILURE|ERROR|TIMED_OUT|CANCELLED|ACTION_REQUIRED")) then "red"
+            elif any($s[]; . == "" or test("PENDING|EXPECTED|QUEUED|IN_PROGRESS")) then "pending"
+            else "green" end ),
+        .baseRefName ] | @tsv' 2>/dev/null)
+    # A red pull request gets one retry of its failed jobs; a second red,
+    # or a conflict, is collected and named when the drain ends.
+    for r in $(drain_retry "$open" "$base" "$retried"); do
+      rb=$(gh pr view "$r" --json headRefName -q .headRefName 2>/dev/null || true)
+      rid=$(latest_run "$rb"); rid=${rid%%	*}
+      if [ -n "$rid" ] && gh run rerun "$rid" --failed >/dev/null 2>&1; then
+        echo "round $round: #$r failed CI; re-running its failed jobs once."
+      fi
+      retried="$retried $r"
+    done
+    attention=$(printf '%s
+%s
+' "$attention" "$(drain_attention "$open" "$base" "$retried")" | sed '/^$/d' | sort -u -n)
+    pick=$(drain_candidates "$open" "$base" "$tried")
+    waiting=$(drain_waiting "$open" "$base")
+    n=$(printf '%s\n' "$pick" | sed '/^$/d' | wc -l | tr -d ' ')
+    elapsed=$(( $(date +%s) - d_start ))
+    if [ "$n" -eq 0 ]; then
+      if [ "$waiting" -gt 0 ] && [ "$elapsed" -lt $((drain_minutes * 60)) ]; then
+        echo "round $round: nothing new is green; $waiting pull request(s) still running CI, waiting two minutes."
+        sleep 120
+        continue
+      fi
+      if [ "$waiting" -gt 0 ]; then echo "round $round: nothing new is green, and $waiting still running after $drain_minutes minutes; stopping."
+      else echo "round $round: nothing left to merge."; fi
+      break
+    fi
+    echo "round $round: $n green pull request(s): $(printf '%s' "$pick" | tr '\n' ' ')"
+    if [ "$n" -gt 2 ]; then sh "$0" --batch --base "$base" $pick; else sh "$0" --serial --base "$base" $pick; fi
+    tried="$tried $(printf '%s' "$pick" | tr '\n' ' ')"
+    if [ $(( $(date +%s) - d_start )) -ge $((drain_minutes * 60)) ]; then
+      echo "Drained for $drain_minutes minutes; stopping. Run --drain again to go on."
+      break
+    fi
+  done
+  echo "queue done"
+  if [ -n "$attention" ]; then
+    echo "Needs attention:"
+    printf '%s
+' "$attention" | awk -F'	' '{ printf "  #%s %s
+", $1, $2 }'
+    exit 1
+  fi
+  exit 0
+fi
 
 if [ "$mode" = serial ]; then
   for pr in $prs; do serial_one "$pr"; done

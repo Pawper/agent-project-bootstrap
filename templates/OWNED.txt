@@ -1,0 +1,45 @@
+# Files the plugin owns. A project gets them from the templates and should
+# not edit them by hand; scripts/sync-templates.sh brings them up to date
+# with the installed plugin. Everything not listed here belongs to the
+# project once copied (CLAUDE.md, ci.yml, the manual, the config files) and
+# is never replaced, only reported on.
+.github/workflows/audit.yml
+.github/workflows/board-sync.yml
+.github/workflows/runner-check.yml
+.github/workflows/runner-watch.yml
+.github/workflows/state-label.yml
+scripts/board-lib.sh
+scripts/board-sync.sh
+scripts/board.sh
+scripts/labels.sh
+scripts/next-number.sh
+scripts/state.sh
+scripts/worktrees-lib.sh
+scripts/worktrees.sh
+scripts/ci/QUEUE.md
+scripts/ci/RUNNERS.md
+scripts/ci/add-runner.ps1
+scripts/ci/batch-lib.sh
+scripts/ci/classify.sh
+scripts/ci/doctor-lib.sh
+scripts/ci/lib.sh
+scripts/ci/line-endings.sh
+scripts/ci/merge-queue.sh
+scripts/ci/numbering-check.sh
+scripts/ci/numbering-lib.sh
+scripts/ci/run-lib.sh
+scripts/ci/run-test-file.mjs
+scripts/ci/runner-doctor.sh
+scripts/ci/setup-check.sh
+scripts/ci/shared-check.sh
+scripts/ci/spec-check.sh
+status/build.sh
+status/check.sh
+status/lib.sh
+# Config with defaults: added when missing, never replaced.
+default .claude/generated-pages.txt
+default .claude/numbering.txt
+default scripts/ci/classes.txt
+default scripts/ci/setup-paths.txt
+default scripts/ci/shared-paths.txt
+default scripts/ci/task-files.txt

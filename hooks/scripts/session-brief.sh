@@ -150,6 +150,21 @@ if has leftover && [ "$have_git" = yes ]; then
   fi
 fi
 
+# Template drift: the project's copies of the plugin's scripts against the
+# installed plugin. Local file comparisons only. A project that never
+# refreshes them runs an old merge queue while the plugin has moved on.
+if has leftover && [ -f "$here/../../templates/OWNED.txt" ] && [ -f "$here/../../scripts/sync/sync-lib.sh" ] && [ -d scripts/ci ]; then
+  . "$here/../../scripts/sync/sync-lib.sh"
+  t_old=0; t_missing=0
+  for p in $(owned_paths "$(cat "$here/../../templates/OWNED.txt")"); do
+    if [ ! -f "$p" ]; then t_missing=$((t_missing + 1))
+    elif [ "$(same_text "$(cat "$p")" "$(cat "$here/../../templates/$p")")" = no ]; then t_old=$((t_old + 1)); fi
+  done
+  if [ $((t_old + t_missing)) -gt 0 ]; then
+    add "Templates: $t_old of the plugin's scripts here differ from the installed plugin and $t_missing are missing. See which with: sh \"\$CLAUDE_PLUGIN_ROOT/scripts/sync/sync-templates.sh\""
+  fi
+fi
+
 # Last handoff
 if has handoff && [ -n "$memory_dir" ] && [ -d "$memory_dir" ]; then
   listing=$(for f in "$memory_dir"/handoff-*; do

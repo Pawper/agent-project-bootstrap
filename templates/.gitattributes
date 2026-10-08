@@ -7,3 +7,14 @@
 *.gif binary
 *.ico binary
 *.pdf binary
+
+# Append-only lists: every pull request adds a line at the end, so two of
+# them always conflict there and never mean to. A union merge keeps both
+# sides' lines. It applies to merges git does locally, which includes the
+# merge queue's batch branch; GitHub's own conflict check ignores it, so a
+# pull request can still show the conflict on the website while the queue
+# merges it cleanly. Use it only for files where the order of new lines
+# does not matter; the numbering check still catches a task added with a
+# running number.
+tasks.md merge=union
+CHANGELOG.md merge=union

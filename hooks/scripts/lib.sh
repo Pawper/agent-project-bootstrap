@@ -42,7 +42,11 @@ json_field() {
 # subshells and backticks, with leading VAR=value assignments and wrappers such
 # as sudo, env, time and exec removed. Quotes are not parsed; this errs toward
 # seeing more commands, never fewer.
-split_commands() {
+# mask_command COMMAND
+# The command with heredoc bodies dropped, continued lines joined, and
+# separators inside quoted strings neutralized: the text every check reads
+# before it is cut into simple commands.
+mask_command() {
   printf '%s\n' "$1" | awk '
     # Pass 1: drop heredoc bodies (text is data, not commands) and join
     # lines that end in a backslash, so a command written over several
@@ -82,6 +86,41 @@ split_commands() {
       print buf
     }
     END { if (held != "") emit(held); if (joining && buf != "") print buf }' | awk '
+    # Pass 2: inside a quoted string, separators are text, not syntax. A
+    # --body "..." spread over lines, or holding ; & | ( ) < > or a
+    # backtick, must not cut the command apart, or the flags after it land
+    # in another fragment. Such characters inside quotes become "_" and
+    # newlines become spaces. Inside double quotes, $( ... ) is still code,
+    # so an rm hidden in "$(rm -rf x)" is still seen.
+    BEGIN { RS = "\001" }
+    function mask(c) { if (c == "\n" || c == "\r") return " "; if (index(";&|()`<>", c)) return "_"; return c }
+    {
+      s = $0; out = ""; q = ""; d = 0; n = length(s)
+      for (i = 1; i <= n; i++) {
+        c = substr(s, i, 1)
+        if (q == "s") { if (c == "\047") q = ""; out = out ((c == "\047") ? c : mask(c)); continue }
+        if (q == "d") {
+          if (c == "\\") { out = out c substr(s, i + 1, 1); i++; continue }
+          if (c == "$" && substr(s, i + 1, 1) == "(") { q = "c"; d = 1; out = out "$("; i++; continue }
+          if (c == "\"") { q = ""; out = out c; continue }
+          out = out mask(c); continue
+        }
+        if (q == "c") {
+          if (c == "(") d++
+          if (c == ")") { d--; if (d == 0) { q = "d"; out = out c; continue } }
+          out = out c; continue
+        }
+        if (c == "\\") { out = out c substr(s, i + 1, 1); i++; continue }
+        if (c == "\047") { q = "s"; out = out c; continue }
+        if (c == "\"") { q = "d"; out = out c; continue }
+        out = out c
+      }
+      printf "%s", out
+    }'
+}
+
+split_commands() {
+  mask_command "$1" | awk '
     { gsub(/&&|\|\||;|\||\$\(|`|\(|\)|\{|\}/, "\n"); print }' | awk '
     {
       line = $0
@@ -306,6 +345,42 @@ workflow_model_reason() {
 # Print the number of PRs when the command runs merge-queue.sh with more
 # than two PR numbers and names neither --batch nor --serial. Print nothing
 # otherwise: a named mode is always allowed, and so are two or fewer PRs.
+# stdin_wait_reason COMMAND
+# Print the command that would sit waiting for input forever: the first
+# command of a pipeline (the one reading the terminal) when it is cat, tee,
+# head, tail, wc or sort with no file to read and no input redirected into
+# it, or read with no input redirect. `cat >> /dev/null` is the shape that
+# hung one agent's shell for fifteen hours. A command after a pipe is fed
+# by the pipe and is fine. Print nothing otherwise.
+stdin_wait_reason() {
+  mask_command "$1" | awk '
+    {
+      t = $0
+      gsub(/&&|\|\||;/, "\n", t)
+      n = split(t, segs, "\n")
+      for (k = 1; k <= n; k++) {
+        first = segs[k]
+        p = index(first, "|")
+        if (p > 0) first = substr(first, 1, p - 1)
+        sub(/^[ \t\r(]+/, "", first); sub(/[ \t\r)]+$/, "", first)
+        m = split(first, w, /[ \t]+/)
+        if (m < 1 || w[1] == "") continue
+        c = w[1]; sub(/.*\//, "", c)
+        if (c !~ /^(cat|tee|head|tail|wc|sort|read)$/) continue
+        files = 0; fed = 0
+        for (i = 2; i <= m; i++) {
+          a = w[i]
+          if (a ~ /^</) { fed = 1; if (a == "<" || a == "<<" || a == "<<<") i++; continue }
+          if (a ~ /^[0-9&]*>/) { if (a ~ /^[0-9&]*>>?$/) i++; continue }
+          if (a ~ /^-/) continue
+          files++
+        }
+        if (fed) continue
+        if (c == "read" || c == "tee" || files == 0) { print first; exit }
+      }
+    }'
+}
+
 # direct_merge_reason COMMAND
 # Print "gh pr merge" when the command merges a pull request directly with
 # gh, outside the merge queue. Turning auto-merge off is allowed. Print

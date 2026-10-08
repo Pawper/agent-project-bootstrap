@@ -673,6 +673,30 @@ SETUP.md' "$own_pats")"
 eq "crlf found" "yes" "$(has_crlf "$(printf 'a\r\nb')")"
 eq "lf only" "" "$(has_crlf "$(printf 'a\nb')")"
 
+printf '\n# quoted text is text, and nothing waits on input\n'
+eq "a multi-line --body with quotes keeps the label after it" "" "$(state_label_reason 'gh issue create --title "Fix chimes" --body "First line.
+The setting says "off" here.
+Last line." --label state:in-progress')"
+eq "a body holding && ; | and ( ) keeps the label after it" "" "$(state_label_reason 'gh issue create --title t --body "Run a && b; then c | d (mostly)." --label state:ready')"
+eq "a single-quoted multi-line body keeps the label after it" "" "$(state_label_reason "gh issue create --title t --body 'One.
+Two.' --label \"state: in progress\"")"
+eq "a multi-line body with no label is still refused" "gh issue create" "$(state_label_reason 'gh issue create --title t --body "One.
+Two."')"
+eq "an rm inside a quoted substitution is still seen" "rm" "$(delete_reason 'echo "$(rm -rf build)"')"
+eq "an rm inside plain quotes is text" "" "$(delete_reason 'git commit -m "rm the old files; && done"')"
+eq "a bare cat writing to /dev/null waits forever" "cat >> /dev/null" "$(stdin_wait_reason 'cat >> /dev/null')"
+eq "a bare cat waits" "cat" "$(stdin_wait_reason 'cd x && cat')"
+eq "read with nothing to read waits" "read answer" "$(stdin_wait_reason 'read answer')"
+eq "head with no file waits" "head -5" "$(stdin_wait_reason 'head -5')"
+eq "cat of a file is fine" "" "$(stdin_wait_reason 'cat a.txt >> b.txt')"
+eq "cat fed by a pipe is fine" "" "$(stdin_wait_reason 'git log | cat')"
+eq "cat fed by a redirect is fine" "" "$(stdin_wait_reason 'cat < in.txt')"
+eq "cat fed by a heredoc is fine" "" "$(stdin_wait_reason 'cat > f.txt <<EOF
+body
+EOF')"
+eq "tee at the end of a pipe is fine" "" "$(stdin_wait_reason 'make | tee out.log')"
+eq "the word cat in a string is fine" "" "$(stdin_wait_reason 'echo "cat" && ls')"
+
 printf '\n# merging only through the queue\n'
 eq "a direct merge" "gh pr merge" "$(direct_merge_reason 'gh pr merge 41 --squash')"
 eq "a direct merge after cd" "gh pr merge" "$(direct_merge_reason 'cd ../wt && gh pr merge 41 --merge --delete-branch')"
@@ -697,6 +721,13 @@ eq "green, not draft, not conflicting, aimed at main" "41
 eq "a pull request already tried is not picked again" "46" "$(drain_candidates "$open" main '41')"
 eq "running ones are counted, drafts and other bases are not" "2" "$(drain_waiting "$open" main)"
 eq "nothing open, nothing picked" "" "$(drain_candidates '' main)"
+eq "red pull requests get one retry" "47" "$(drain_retry "$open" main '')"
+eq "a red pull request already retried is not retried again" "" "$(drain_retry "$open" main '47')"
+eq "a conflict needs attention at once" "44	has conflicts with main" "$(drain_attention "$open" main '')"
+eq "red again after its retry needs attention" "44	has conflicts with main
+47	failed CI twice" "$(drain_attention "$open" main '47')"
+eq "drafts and other bases never need attention here" "" "$(drain_attention "43	true	CONFLICTING	red	main
+45	false	CONFLICTING	red	release" main '43 45')"
 
 printf '\n# numbering\n'
 . "$root/templates/scripts/ci/numbering-lib.sh"
@@ -741,6 +772,73 @@ src/chimes.ts' 'supabase/migrations/*.sql')"
 eq "a migration marked done passes, even with the instruction text" "" "$(pending_migrations "$manual" 'supabase/migrations/0007_schedule_versions.sql' 'supabase/migrations/*.sql')"
 eq "a migration the manual never mentions" "0025_new.sql	not in the manual" "$(pending_migrations "$manual" 'supabase/migrations/0025_new.sql' 'supabase/migrations/*.sql')"
 eq "no migration added, nothing" "" "$(pending_migrations "$manual" 'src/a.ts' 'supabase/migrations/*.sql')"
+
+printf '\n# decision numbers inside a file\n'
+brief='## Decisions
+
+| ID | Decision | Date |
+|---|---|---|
+| D1 | Repo and board 5 are the source of truth. | 2026-09-25 |
+| D2 | One-time price. | 2026-09-26 |
+| D55 | Chimes per station. | 2026-10-07 |
+
+The chime (D34) and the price (D38) are referenced here, not defined.
+- **D56** Volume per station.
+## D57 Wear tiles'
+eq "the kind's prefix" "D" "$(numbering_prefix 'migration m/*.sql
+decision docs/product-brief.md D' decision)"
+eq "a file-name kind has no prefix" "" "$(numbering_prefix 'migration m/*.sql' migration)"
+eq "definitions in table rows, bold and headings, not prose" "1
+2
+55
+56
+57" "$(id_definitions "$brief" D)"
+eq "D10 is not a definition of D1" "10" "$(id_definitions '| D10 | x |' D)"
+eq "a word that only starts with the prefix is not a definition" "" "$(id_definitions '- Done 2026-10-05' D)"
+eq "no duplicates in a clean brief" "" "$(duplicate_ids "$brief" D)"
+eq "two pull requests that both took D55" "D55" "$(duplicate_ids "$brief
+| D55 | Another decision. | 2026-10-08 |" D)"
+eq "the next free decision" "D58" "$(next_free_id "$(id_definitions "$brief" D)" D)"
+eq "the first decision" "D1" "$(next_free_id '' D)"
+
+printf '\n# template refresh\n'
+. "$root/scripts/sync/sync-lib.sh"
+owned='# comment
+scripts/ci/merge-queue.sh
+.github/workflows/audit.yml
+default scripts/ci/task-files.txt'
+eq "plugin-owned paths" "scripts/ci/merge-queue.sh
+.github/workflows/audit.yml" "$(owned_paths "$owned")"
+eq "config with defaults" "scripts/ci/task-files.txt" "$(default_paths "$owned")"
+eq "a Windows checkout is the same text" "yes" "$(same_text "$(printf 'a\r\nb\r\n')" "$(printf 'a\nb')")"
+eq "a changed line is not" "no" "$(same_text 'a
+b' 'a
+c')"
+tplyml='name: CI
+on: [push]
+jobs:
+  classify:
+    runs-on: x
+  numbering-check:
+    runs-on: x
+  ci-passed:
+    name: CI passed
+    needs: [classify]'
+projyml='name: CI
+jobs:
+  classify:
+    runs-on: x
+  ci-passed:
+    runs-on: x
+env:
+  numbering-check: not a job'
+eq "jobs a workflow defines" "classify
+numbering-check
+ci-passed" "$(workflow_jobs "$tplyml")"
+eq "jobs the project's ci.yml lacks" "numbering-check" "$(missing_jobs "$tplyml" "$projyml")"
+eq "lines the project's file lacks, comments ignored" "tasks.md merge=union" "$(missing_lines '# comment
+* text=auto eol=lf
+tasks.md merge=union' '* text=auto eol=lf')"
 
 printf '\n# runner watch\n'
 runs=$(printf '11\tCI\tfeature\tqueued\t1000\n12\tCI\tmain\tqueued\t1500\n13\tCI\tother\tin_progress\t100\n14\tCI\tx\tqueued\t1900\n')

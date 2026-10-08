@@ -102,3 +102,43 @@ pending_migrations() {
     }
     END { for (i = 1; i <= c; i++) { f = order[i]; if (!(f in seen)) print f "\tnot in the manual"; else if (f in pending) print f "\tnot yet run" } }'
 }
+
+# An ID kind lives inside one file rather than in file names: decisions
+# D1, D2, ... in a product brief. Its line in .claude/numbering.txt has
+# three fields, "KIND FILE PREFIX", for example
+#   decision docs/product-brief.md D
+
+# numbering_prefix CONFIG KIND
+# The ID prefix for KIND, or nothing for a file-name kind.
+numbering_prefix() {
+  printf '%s\n' "$1" | tr -d '\r' | awk -v k="$2" '$1 == k && NF >= 3 { print $3; exit }'
+}
+
+# id_definitions TEXT PREFIX
+# The numbers of the IDs TEXT defines, one per line, in order. A line
+# defines an ID when the ID comes first, after any table bar, heading
+# mark, list mark, quote mark or bold: "| D55 | ...", "## D55 ...",
+# "- **D55** ...". A mention in prose, "(D34)", is a reference, not a
+# definition.
+id_definitions() {
+  printf '%s\n' "$1" | tr -d '\r' | awk -v pre="$2" '
+    {
+      l = $0
+      sub(/^[ \t|#>*+-]*/, "", l); sub(/^\*\*/, "", l)
+      if (index(l, pre) != 1) next
+      r = substr(l, length(pre) + 1)
+      if (match(r, /^[0-9]+/) && substr(r, RLENGTH + 1, 1) !~ /[0-9A-Za-z_]/) print substr(r, 1, RLENGTH) + 0
+    }'
+}
+
+# duplicate_ids TEXT PREFIX
+# The IDs TEXT defines more than once, one per line: "D55".
+duplicate_ids() {
+  id_definitions "$1" "$2" | awk -v pre="$2" '{ n[$0]++ } END { for (k in n) if (n[k] > 1) print pre k }' | sort -t"$2" -k2 -n
+}
+
+# next_free_id NUMBERS PREFIX
+# The next ID after the largest number: "D57". An empty list gives "D1".
+next_free_id() {
+  printf '%s\n' "$1" | awk -v pre="$2" '/^[0-9]+$/ { if ($0 + 0 > max) max = $0 + 0 } END { print pre (max + 1) }'
+}

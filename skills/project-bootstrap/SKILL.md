@@ -227,6 +227,7 @@ are ready to copy from `${CLAUDE_PLUGIN_ROOT}/templates/`:
 - Step 3 also: `.gitignore`, with `.scratch/` and the generated files
 - Step 4 also: `scripts/worktrees.sh` and `scripts/worktrees-lib.sh`, which the merge queue calls to check a pull request's folder when it is queued and to remove a merged branch's worktree and branch; `scripts/ci/shared-check.sh` and `shared-paths.txt`
 - Step 9: `.claude/session-brief.json`; the hook comes from the plugin
+- Later: the plugin-owned copies go stale as the plugin moves on. `scripts/sync/sync-templates.sh` in the plugin reports which differ or are missing and, with `--apply`, refreshes them on a branch for a pull request. The session brief says when they are out of date.
 - Step 10: `.claude/project-drive.json`; the skill and its scripts come from the plugin; the drive issue is filed with `gh issue create --title Drive --label drive,state:parked`
 
 Copy them into the new repository, replace every CAPITALIZED placeholder, run `sh scripts/board.sh OWNER OWNER/REPO`,

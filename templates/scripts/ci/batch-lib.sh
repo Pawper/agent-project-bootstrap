@@ -78,3 +78,24 @@ drain_waiting() {
   printf '%s\n' "$1" | tr -d '\r' | awk -F'\t' -v base="$2" '
     NF >= 5 && $2 == "false" && $5 == base && $4 == "pending" { n++ } END { print n + 0 }'
 }
+
+# drain_retry LIST BASE RETRIED
+# The red pull requests (not drafts, aimed at BASE) whose failed run has
+# not been re-run yet in this drain: one retry each, because a flaky test
+# or a lost runner should not stop a change.
+drain_retry() {
+  printf '%s\n' "$1" | tr -d '\r' | awk -F'\t' -v base="$2" -v tried=" $3 " '
+    NF >= 5 && $2 == "false" && $5 == base && $4 == "red" && index(tried, " " $1 " ") == 0 { print $1 }' | sort -n
+}
+
+# drain_attention LIST BASE RETRIED
+# The pull requests a person or an agent must look at, one per line as
+# "NUMBER<TAB>why": conflicting with the base, or red again after its one
+# retry. The drain exits non-zero naming these, so nobody has to notice.
+drain_attention() {
+  printf '%s\n' "$1" | tr -d '\r' | awk -F'\t' -v base="$2" -v tried=" $3 " '
+    NF >= 5 && $2 == "false" && $5 == base {
+      if (toupper($3) == "CONFLICTING") printf "%s\thas conflicts with %s\n", $1, base
+      else if ($4 == "red" && index(tried, " " $1 " ") > 0) printf "%s\tfailed CI twice\n", $1
+    }' | sort -n
+}
