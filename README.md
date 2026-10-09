@@ -1,4 +1,4 @@
-# agent-project-bootstrap
+# bitblitzin-bootstrap
 
 <img src="assets/icon.png" alt="" width="72" align="right">
 
@@ -7,8 +7,8 @@ A Claude Code plugin for projects where many coding agents work at once. It deci
 **Install**, inside a Claude Code session:
 
 ```text
-/plugin marketplace add Pawper/agent-project-bootstrap
-/plugin install project-bootstrap@agent-project-bootstrap
+/plugin marketplace add Pawper/bitblitzin-bootstrap
+/plugin install bitblitzin-bootstrap@bitblitzin-bootstrap
 ```
 
 Then, in a new or struggling repository: `/project-bootstrap set this project up for many agents`.
@@ -69,18 +69,18 @@ What never changes: one home per kind of thing, nothing appended to a shared pag
 Inside a Claude Code session:
 
 ```text
-/plugin marketplace add Pawper/agent-project-bootstrap
-/plugin install project-bootstrap@agent-project-bootstrap
+/plugin marketplace add Pawper/bitblitzin-bootstrap
+/plugin install bitblitzin-bootstrap@bitblitzin-bootstrap
 ```
 
 Or from a shell, which also works in a setup script:
 
 ```bash
-claude plugin marketplace add Pawper/agent-project-bootstrap
+claude plugin marketplace add Pawper/bitblitzin-bootstrap
 ```
 
 ```bash
-claude plugin install project-bootstrap@agent-project-bootstrap
+claude plugin install bitblitzin-bootstrap@bitblitzin-bootstrap
 ```
 
 Pick the scope you want when asked. User scope gives you the skill and the hooks in every project. Project scope writes the plugin into the repository's `.claude/settings.json` so every collaborator gets the hooks too, which is the point.
@@ -88,7 +88,7 @@ Pick the scope you want when asked. User scope gives you the skill and the hooks
 To try a local checkout without installing it:
 
 ```bash
-claude --plugin-dir /path/to/agent-project-bootstrap
+claude --plugin-dir /path/to/bitblitzin-bootstrap
 ```
 
 ### Copy the folder
@@ -125,7 +125,7 @@ This is what a person does with the plugin, from install to the first feature ag
 4. **Two settings GitHub cannot script.** In the board's Workflows tab, switch on the four built-in workflows listed under The project board. In branch protection on main, require exactly one check, `CI passed`, and leave "require branches to be up to date" off, as described under Branch protection on main.
 5. **Build the status page once.** Run `sh status/build.sh` and commit STATUS.md. From here on CI fails any PR that leaves the page stale, and the hook refuses hand edits to it.
 6. **Write the constitution and the first spec.** Fill in `specs/constitution.md` once, then copy `specs/FEATURE/` to `specs/<feature>/` for the first feature. If you use spec kit, run it inside that folder; the templates are plain Markdown and do not depend on it. From here on CI fails any PR that changes `src/` without a change in a spec folder.
-7. **Open the owner console.** Run `npx agent-project-bootstrap console` and open the page it names. Fill in `console/services.json` for the systems the project really talks to; the launch to-do shows what is left and clears on its own as settings land.
+7. **Open the owner console.** Run `npx bitblitzin-bootstrap console` and open the page it names. Fill in `console/services.json` for the systems the project really talks to; the launch to-do shows what is left and clears on its own as settings land.
 8. **Turn on the drive.** Copy `.claude/project-drive.json` in and file one issue titled "Drive" labeled `drive`. From then on `/project-drive`, by hand or on a timer, reads the board and the checks, proposes what to do next, and waits for your approval before doing any of it. Every session also opens with the proposal under "Proposed next."
 9. **Day to day.** Each task starts as an issue with a State, filed from the template or with `gh issue create --label state:ready`, and the coordinator sets the board field with `scripts/state.sh`. Agents work in worktrees, run only the tests for the files they changed, and open PRs. CI runs only the classes a PR touches and reports once through `CI passed`. The merge queue script merges a green PR without a re-run when main moved outside its classes. The full suite runs on main after every merge and opens a `ci-red` issue when it fails. Every night the audit comments on the tracking issue only when an issue has no State or a merged PR left one stale.
 10. **When a hook refuses something.** The message says what was blocked and what to do instead; do that. A project that really needs an exception changes `.claude/generated-pages.txt` or disables the plugin for that repository. Nobody works around a hook.
@@ -176,11 +176,11 @@ Every hook reads the tool call before it runs, and when it refuses, it prints on
 **When a plugin update reaches an installed copy.** The manifest carries a version, and an installed copy stays on the version it was installed at until that number changes. A project that installed 0.1.0 does not have the session brief, the batch hook or the drive. Update it, then start a new session:
 
 ```bash
-claude plugin marketplace update agent-project-bootstrap
+claude plugin marketplace update bitblitzin-bootstrap
 ```
 
 ```bash
-claude plugin update project-bootstrap@agent-project-bootstrap
+claude plugin update bitblitzin-bootstrap@bitblitzin-bootstrap
 ```
 
 A session started with `--plugin-dir` reads the checkout on disk and is always current.
@@ -258,19 +258,19 @@ The piece a spec kit does not give you: one page that answers "what systems does
 **Two mounts, one source.** By default it is a small side app on your machine:
 
 ```bash
-npx agent-project-bootstrap console
+npx bitblitzin-bootstrap console
 ```
 
 That serves one page on localhost from the files in the current folder and nothing else. Until the package is on npm, the same command works straight from the repository:
 
 ```bash
-npx github:Pawper/agent-project-bootstrap console
+npx github:Pawper/bitblitzin-bootstrap console
 ```
 
 When the owner wants it online, the same page mounts as a route behind the project's own sign-in. The project passes a function that reads its admin API, and the live numbers appear:
 
 ```js
-const { createConsole } = require('agent-project-bootstrap/console');
+const { createConsole } = require('bitblitzin-bootstrap/console');
 const owner = createConsole({ root: __dirname, numbers: () => admin.counts() });
 app.get('/owner', requireOwner, owner.handler);
 ```
@@ -284,7 +284,7 @@ app.get('/owner', requireOwner, owner.handler);
 
 **One file drives it:** `console/services.json`. It lists the systems, the settings each depends on with a plain label for each, the links, the to-do items and their flags, and the FAQ entries. An agent adding a service adds an entry and the page follows. Nothing a person sees names a variable: the card says "the database address is still needed," not the name of the setting.
 
-**Three checks hold it together**, run by the tests and by `npx agent-project-bootstrap console --check`:
+**Three checks hold it together**, run by the tests and by `npx bitblitzin-bootstrap console --check`:
 
 - Every name in `.env.example` has a card, a part or a to-do item. A setting with no card fails.
 - Every required question is present in the FAQ. The project declares its own list of ids under `faq.required`; without one, the sample's nine "How do I" and seven "What happens when" apply. A missing one fails, so a project cannot quietly drop the question it has no answer to.

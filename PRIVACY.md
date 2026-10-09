@@ -17,4 +17,4 @@ Only what you already send by using Claude Code and GitHub: the hook messages an
 
 ## Questions
 
-Open an issue at https://github.com/Pawper/agent-project-bootstrap/issues.
+Open an issue at https://github.com/Pawper/bitblitzin-bootstrap/issues.

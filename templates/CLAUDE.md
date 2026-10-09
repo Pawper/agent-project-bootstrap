@@ -74,7 +74,7 @@ Two rules have no mechanical check and are reviewed by hand: report what was not
 
 These files were written for GitHub, Actions and `gh`. If this project uses something else, say so once, keep every rule, and swap the tool: the tracker's issue with a State field, its board grouped by State, its CI with the same jobs, its CLI in the scripts. The pure parts of every script are tool-free.
 
-The hooks come from the `project-bootstrap` plugin. If a hook refuses a command, do what its message says; do not look for a way around it.
+The hooks come from the `bitblitzin-bootstrap` plugin. If a hook refuses a command, do what its message says; do not look for a way around it.
 
 ## Commands
 
@@ -82,6 +82,6 @@ The hooks come from the `project-bootstrap` plugin. If a hook refuses a command,
 - Check it is current: `sh status/check.sh`
 - Run one test file: `TEST_COMMAND path/to/file`
 - Classify a change: `sh scripts/ci/classify.sh`
-- Open the owner console: `npx agent-project-bootstrap console`; check its config: `npx agent-project-bootstrap console --check`. Adding a service means adding an entry to `console/services.json`.
+- Open the owner console: `npx bitblitzin-bootstrap console`; check its config: `npx bitblitzin-bootstrap console --check`. Adding a service means adding an entry to `console/services.json`.
 - Where every open issue and pull request really stands: `/project-status`. Light readers summarize bodies and comments, only for items that changed; you keep one line per item. Do not read the item files yourself.
 - Propose the next round: `/project-drive`. It reads the board and the checks, proposes, and does nothing until a person approves in the session or on the issue labeled `drive`. Config in `.claude/project-drive.json`.

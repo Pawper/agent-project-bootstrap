@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// npx agent-project-bootstrap console [--port 7777] [--root .] [--check]
+// npx bitblitzin-bootstrap console [--port 7777] [--root .] [--check]
 //
 // console        serve the owner console for the project in the current folder
 // console --check  do not serve; fail when the config has gaps (used by CI and tests)
@@ -12,8 +12,8 @@ const config = require('./config');
 
 function usage() {
   process.stdout.write(`Usage:
-  agent-project-bootstrap console [--port 7777] [--root <project>]
-  agent-project-bootstrap console --check [--root <project>]
+  bitblitzin-bootstrap console [--port 7777] [--root <project>]
+  bitblitzin-bootstrap console --check [--root <project>]
 
 Serves the owner console for the project at <project> (default: the current
 folder) on localhost. --check reads the config and the example env file and

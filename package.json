@@ -1,11 +1,11 @@
 {
-  "name": "agent-project-bootstrap",
-  "version": "0.6.2",
+  "name": "bitblitzin-bootstrap",
+  "version": "0.7.0",
   "description": "A Claude Code plugin for projects where many coding agents work at once, with an owner console that answers what systems the project talks to, what state each is in, and how to do the routine things.",
   "license": "MIT",
-  "repository": "github:Pawper/agent-project-bootstrap",
+  "repository": "github:Pawper/bitblitzin-bootstrap",
   "bin": {
-    "agent-project-bootstrap": "console/cli.js"
+    "bitblitzin-bootstrap": "console/cli.js"
   },
   "exports": {
     "./console": "./console/index.js"

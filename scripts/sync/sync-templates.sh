@@ -92,7 +92,7 @@ for p in $changed $missing $defaults; do
 done
 [ -n "$(printf '%s' "$written" | tr -d ' ')" ] || { echo "Nothing written: every differing file was edited here. Pass --force to replace them."; git checkout -q -; exit 0; }
 git add -- $written
-git commit -q -m "Sync the plugin's scripts and workflows to project-bootstrap $version" -m "Plugin-owned files were brought up to date with the installed plugin; config files that did not exist were added with their defaults. Files the project owns, and plugin-owned files the project had edited, were not touched."
+git commit -q -m "Sync the plugin's scripts and workflows to bitblitzin-bootstrap $version" -m "Plugin-owned files were brought up to date with the installed plugin; config files that did not exist were added with their defaults. Files the project owns, and plugin-owned files the project had edited, were not touched."
 echo "Committed on branch $branch. Review the diff, then push it and open a pull request."
 # New state labels arrive with labels.sh; state.sh fails until they exist.
 case " $written " in

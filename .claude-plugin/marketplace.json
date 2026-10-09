@@ -1,13 +1,13 @@
 {
-  "name": "agent-project-bootstrap",
-  "description": "The project-bootstrap plugin: a skill, enforcement hooks, and templates for projects where many coding agents work at once.",
+  "name": "bitblitzin-bootstrap",
+  "description": "The Bitblitzin Bootstrap plugin: a skill, enforcement hooks, and templates for projects where many coding agents work at once.",
   "owner": {
     "name": "Phillip A. Wessels",
     "url": "https://github.com/Pawper"
   },
   "plugins": [
     {
-      "name": "project-bootstrap",
+      "name": "bitblitzin-bootstrap",
       "source": "./",
       "description": "Decide the homes and the rules for a multi-agent project, then enforce them with hooks and CI.",
       "category": "workflow",
