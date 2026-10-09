@@ -199,6 +199,10 @@ order, one pull request per step, so nothing lands all at once and nothing worki
    then the spec check, which is incremental by design (each feature gets its folder when it is next touched);
    then line endings, which is one deliberate normalizing commit made when no pull requests are open, because
    it conflicts with every branch that was cut before it.
+   **From day one, not as a later sync:** the `!rerun-free docs specs status` line in `classes.txt`, an empty
+   `task-files.txt`, no union merge on any hand-edited file, and every existing task file frozen (each open
+   task becomes an issue; one line at the top says so). On one project these four fixed a week of appends to
+   shared pages in an evening; put in at the start they prevent it.
 6. **The board.** If one exists, give its number to the board script instead of letting it create a second.
 7. **The console**, from the example env file the project already has; the check names every setting that
    still has no card, which is the list of systems to describe.

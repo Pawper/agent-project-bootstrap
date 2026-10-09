@@ -8,10 +8,14 @@
 # Usage, from the project root:
 #   sh "$CLAUDE_PLUGIN_ROOT/scripts/sync/sync-templates.sh"          report only
 #   sh "$CLAUDE_PLUGIN_ROOT/scripts/sync/sync-templates.sh" --apply  update, on a new branch
+#   ... --apply --force   also replace plugin-owned files the project edited
 #
 # What it does with each kind of file:
 #   - Plugin-owned scripts and workflows (templates/OWNED.txt): reported when
-#     missing or different; with --apply, written from the plugin.
+#     missing or different; with --apply, written from the plugin. One the
+#     project has edited since it was copied (more than one commit touches
+#     it) is kept and named, unless --force: a local exception in a check
+#     was once replaced without a word, and CI went red on the next push.
 #   - Config with defaults: added when missing; never replaced.
 #   - The project's own files (ci.yml, .gitattributes, .gitignore):
 #     never touched; it reports the jobs and lines the template has that
@@ -25,7 +29,10 @@ here=$(dirname "$0")
 . "$here/sync-lib.sh"
 plugin=$(cd "$here/../.." && pwd)
 tpl="$plugin/templates"
-apply=no; [ "$1" = "--apply" ] && apply=yes
+apply=no; force=no
+for a in "$@"; do
+  case "$a" in --apply) apply=yes ;; --force) force=yes ;; esac
+done
 
 git rev-parse --git-dir >/dev/null 2>&1 || { echo "Run this from the project's root, inside its git repository." >&2; exit 2; }
 version=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$plugin/.claude-plugin/plugin.json" | head -n 1)
@@ -40,11 +47,15 @@ defaults=""
 for p in $(default_paths "$owned"); do [ -f "$p" ] || defaults="$defaults $p"; done
 
 echo "Plugin $version. Plugin-owned files here: $current current, $(printf '%s' "$changed" | wc -w | tr -d ' ') older or edited, $(printf '%s' "$missing" | wc -w | tr -d ' ') missing."
+edited=""
 for p in $changed; do
   # A file committed more than once has been edited in this project since
-  # it was copied; the refresh would replace that edit, so say so.
+  # it was copied; the refresh would replace that edit, so say so, and
+  # with --apply keep it unless --force.
   n=$(git log --oneline -- "$p" 2>/dev/null | wc -l | tr -d ' ')
-  if [ "${n:-0}" -gt 1 ]; then echo "  differs:  $p (edited here in $((n - 1)) later commit(s); check that diff before merging)"
+  if [ "${n:-0}" -gt 1 ]; then
+    echo "  differs:  $p (edited here in $((n - 1)) later commit(s); kept unless --force; check that diff and carry the edit into the template or an issue)"
+    edited="$edited $p"
   else echo "  differs:  $p"; fi
 done
 for p in $missing; do echo "  missing:  $p"; done
@@ -69,11 +80,26 @@ if [ "$apply" = no ]; then echo "Nothing was changed. Add --apply to write these
 branch="template-sync-$(date +%Y-%m-%d)"
 git show-ref --verify --quiet "refs/heads/$branch" && branch="$branch-$(date +%H%M)"
 git checkout -q -b "$branch"
+written=""
 for p in $changed $missing $defaults; do
+  if [ "$force" = no ]; then
+    case " $edited " in *" $p "*) echo "  kept:     $p (edited here; pass --force to replace it)"; continue ;; esac
+  fi
   mkdir -p "$(dirname "$p")"
   cp "$tpl/$p" "$p"
   case "$p" in *.sh) chmod +x "$p" 2>/dev/null || true ;; esac
+  written="$written $p"
 done
-git add -- $changed $missing $defaults
-git commit -q -m "Sync the plugin's scripts and workflows to project-bootstrap $version" -m "Plugin-owned files were brought up to date with the installed plugin; config files that did not exist were added with their defaults. Files the project owns were not touched."
+[ -n "$(printf '%s' "$written" | tr -d ' ')" ] || { echo "Nothing written: every differing file was edited here. Pass --force to replace them."; git checkout -q -; exit 0; }
+git add -- $written
+git commit -q -m "Sync the plugin's scripts and workflows to project-bootstrap $version" -m "Plugin-owned files were brought up to date with the installed plugin; config files that did not exist were added with their defaults. Files the project owns, and plugin-owned files the project had edited, were not touched."
 echo "Committed on branch $branch. Review the diff, then push it and open a pull request."
+# New state labels arrive with labels.sh; state.sh fails until they exist.
+case " $written " in
+  *" scripts/labels.sh "*)
+    if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1 && sh scripts/labels.sh >/dev/null 2>&1; then
+      echo "Labels are current: scripts/labels.sh ran, so any new state label exists before scripts/state.sh needs it."
+    else
+      echo "Run sh scripts/labels.sh once gh is signed in, so any new state label exists before scripts/state.sh needs it."
+    fi ;;
+esac

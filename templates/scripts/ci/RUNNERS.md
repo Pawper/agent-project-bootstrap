@@ -24,6 +24,10 @@ A runner picks up whatever environment it starts with, and so does every job it 
 
 To start a runner by hand from Git Bash anyway, strip it first: `env -u NoDefaultCurrentDirectoryInExePath cmd //c run.cmd`. The doctor warns when the shell you run it from sets the variable.
 
+## Nobody stops the daemon
+
+A build daemon (Gradle's, Nx's, the .NET build server) is one process for every build on the machine. On a machine that also hosts a runner, an agent that runs `gradlew --stop` from its worktree, meaning to tidy up, kills the runner's daemon mid-build, and the android job fails with "Gradle build daemon has been stopped". The `block-loose-ends` hook refuses `gradlew --stop`, `gradle --stop`, `nx reset`, `nx daemon --stop` and `dotnet build-server shutdown`. Stopping what you started means your own servers and watchers; a daemon idles out on its own. If no runner is on the machine, `DAEMON_STOP_OK=1` in front of the command says so.
+
 ## Before the first run, and after any change to the machine
 
 1. `sh scripts/ci/runner-doctor.sh` on the machine: which bash a step gets, whether Git, Node and gh are on the machine PATH, whether the shell you are in would leak `NoDefaultCurrentDirectoryInExePath` into a runner, PowerShell's execution policy, and whether each runner is online.

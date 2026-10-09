@@ -376,6 +376,16 @@ eq "no process in the folder" "" "$(procs_in_dir "$(printf '77\tnode D:/other/se
 eq "closing a PR with no comment" "gh pr close" "$(pr_close_reason 'gh pr close 41')"
 eq "closing with a comment is fine" "" "$(pr_close_reason 'gh pr close 41 --comment "replaced by #52"')"
 eq "closing with -c is fine" "" "$(pr_close_reason 'gh pr close 41 -c "duplicate of #40"')"
+
+printf '\n# daemon_stop_reason\n'
+eq "gradlew --stop is refused" "gradlew --stop" "$(daemon_stop_reason './gradlew --stop')"
+eq "the Windows wrapper too" "gradlew --stop" "$(daemon_stop_reason 'cd android && .\gradlew.bat --stop')"
+eq "gradle --stop is refused" "gradle --stop" "$(daemon_stop_reason 'gradle --stop')"
+eq "nx reset is refused" "nx reset" "$(daemon_stop_reason 'npx nx reset')"
+eq "dotnet build-server shutdown is refused" "dotnet build-server shutdown" "$(daemon_stop_reason 'dotnet build-server shutdown')"
+eq "a build is fine" "" "$(daemon_stop_reason './gradlew assembleDebug')"
+eq "the word in a string is fine" "" "$(daemon_stop_reason 'git commit -m "never run gradlew --stop"')"
+eq "no runner on this machine, allowed" "" "$(daemon_stop_reason 'DAEMON_STOP_OK=1 ./gradlew --stop')"
 eq "viewing a PR is fine" "" "$(pr_close_reason 'gh pr view 41')"
 eq "a detached worktree" "detached" "$(worktree_add_reason 'git worktree add --detach ../wt/x HEAD')"
 eq "a worktree with a branch is fine" "" "$(worktree_add_reason 'git worktree add -b task-x ../wt/x')"
@@ -764,6 +774,12 @@ eq "red again after its retry needs attention" "44	has conflicts with main
 47	failed CI twice" "$(drain_attention "$open" main '47')"
 eq "drafts and other bases never need attention here" "" "$(drain_attention "43	true	CONFLICTING	red	main
 45	false	CONFLICTING	red	release" main '43 45')"
+
+eq "one green with others running: hold" "yes" "$(drain_hold 1 3)"
+eq "two green with others running: hold" "yes" "$(drain_hold 2 1)"
+eq "three green: batch now" "no" "$(drain_hold 3 4)"
+eq "nothing running: merge" "no" "$(drain_hold 1 0)"
+eq "nothing green: nothing to hold" "no" "$(drain_hold 0 2)"
 
 printf '\n# the API budget and one queue at a time\n'
 eq "plenty left, no wait" "0" "$(rate_wait "4000	2000" 1000)"

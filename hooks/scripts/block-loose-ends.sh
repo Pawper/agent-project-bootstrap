@@ -25,4 +25,9 @@ if [ -n "$(worktree_add_reason "$cmd")" ]; then
   printf '%s\n' "Blocked a detached worktree because its commits would be reachable only from that folder; add it with a branch instead, for example \`git worktree add -b task-name path\`." >&2
   exit 2
 fi
+daemon_hit=$(daemon_stop_reason "$cmd")
+if [ -n "$daemon_hit" ]; then
+  printf '%s\n' "Blocked \`$daemon_hit\` because the build daemon is shared by every build on this machine, including a self-hosted runner's job in flight, which fails with \"daemon has been stopped\". Let it idle out; stopping what you started means your own servers and watchers, not the daemon. If no runner runs on this machine, prefix the command with DAEMON_STOP_OK=1." >&2
+  exit 2
+fi
 exit 0

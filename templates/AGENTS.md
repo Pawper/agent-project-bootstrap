@@ -39,7 +39,7 @@ Many agents work here at once. Each kind of thing has one home, every rule has s
 - One scratch folder, `.scratch/`, which git ignores. Probe scripts, screenshots and notes go there and nowhere else, so any other untracked file means real work.
 - Images and build output never go in a worktree. They belong in the work folder outside the repository.
 - A fix to shared code gets its own issue and its own pull request. Never patch shared code to get your own build through and ship only your part.
-- Stop what you started. Any server or watcher you started from a worktree ends before you finish.
+- Stop what you started. Any server or watcher you started from a worktree ends before you finish. Never stop a build daemon (`gradlew --stop`, `nx reset`): it is shared by every build on the machine, including a self-hosted runner's job in flight.
 - Never move a branch from outside its worktree, never add a detached worktree, and never close a pull request without a comment saying why or what replaced it; `sh scripts/worktrees.sh close PR "reason"` does the whole ending.
 - Merge only through the queue: `sh scripts/ci/merge-queue.sh --drain` merges everything green, `--serial PR` one pull request. A direct `gh pr merge` is refused.
 - Never take a running number in a shared place. A task, a setup step or a note is named by its issue number ("#123"), which never collides. A file that must keep its order, such as a migration, takes its number from `sh scripts/next-number.sh migration`, which checks main and every open pull request.
