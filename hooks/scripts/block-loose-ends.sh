@@ -16,6 +16,11 @@ if [ -n "$(pr_close_reason "$cmd")" ]; then
   printf '%s\n' "Blocked \`gh pr close\` because a closed pull request needs an ending; add \`--comment\` saying why or what replaced it, or run \`sh scripts/worktrees.sh close PR \"reason\"\`, which also archives the branch and removes its worktree." >&2
   exit 2
 fi
+wait_hit=$(stdin_wait_reason "$cmd")
+if [ -n "$wait_hit" ]; then
+  printf '%s\n' "Blocked \`$wait_hit\` because it reads input that never comes and would hang the shell; give it a file to read, pipe something into it, or use a heredoc (\`cat > file <<'EOF'\`)." >&2
+  exit 2
+fi
 if [ -n "$(worktree_add_reason "$cmd")" ]; then
   printf '%s\n' "Blocked a detached worktree because its commits would be reachable only from that folder; add it with a branch instead, for example \`git worktree add -b task-name path\`." >&2
   exit 2

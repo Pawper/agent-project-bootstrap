@@ -29,3 +29,13 @@ policy_verdict() {
     tolower($1) == "localmachine" || tolower($1) == "machinepolicy" { if (tolower($2) == "restricted" || tolower($2) == "allsigned") bad = 1 }
     END { print bad ? "warn" : "ok" }'
 }
+
+# exepath_verdict VALUE
+# VALUE is NoDefaultCurrentDirectoryInExePath as this shell sees it. Git
+# Bash sets it to 1. A runner started from such a shell, and every job it
+# launches, inherits it, and then cmd will not run a program from the
+# current folder by its bare name: `gradlew.bat` fails as "not recognized"
+# while `if exist gradlew.bat` still passes. "warn" when it is set.
+exepath_verdict() {
+  if [ -n "$1" ]; then echo warn; else echo ok; fi
+}

@@ -41,6 +41,10 @@ Many agents work here at once. Each kind of thing has one home, every rule has s
 - A fix to shared code gets its own issue and its own pull request. Never patch shared code to get your own build through and ship only your part.
 - Stop what you started. Any server or watcher you started from a worktree ends before you finish.
 - Never move a branch from outside its worktree, never add a detached worktree, and never close a pull request without a comment saying why or what replaced it; `sh scripts/worktrees.sh close PR "reason"` does the whole ending.
+- Merge only through the queue: `sh scripts/ci/merge-queue.sh --drain` merges everything green, `--serial PR` one pull request. A direct `gh pr merge` is refused.
+- Never take a running number in a shared place. A task, a setup step or a note is named by its issue number ("#123"), which never collides. A file that must keep its order, such as a migration, takes its number from `sh scripts/next-number.sh migration`, which checks main and every open pull request.
+- A change that adds a migration merges after the migration has run: run it, mark its line Done in the manual on the same branch, then queue it.
+- To act in another folder, use `git -C PATH ...` rather than `cd PATH && git ...`; a `cd` inside a chained command asks for approval every time.
 - Worktrees live in one folder, WORKTREE_DIR, and go when their pull request merges. The merge queue removes them; `sh scripts/worktrees.sh prune --apply` clears a backlog. It is the one cleanup allowed, because the branch keeps the work.
 
 ## What enforces each rule
@@ -54,7 +58,9 @@ Many agents work here at once. Each kind of thing has one home, every rule has s
 | Every issue has a State | The issue template requires it; the `require-state-label` hook refuses `gh issue create` without `--label state:...`; the `state-label` workflow keeps the label in step with the field; `sh scripts/state.sh` sets it on the board |
 | A red main is seen | The `full` CI job opens an issue labeled `ci-red` when it fails |
 | No usage wasted on dispatch | The `require-agent-model` hook refuses an agent or workflow dispatch without a model that fits the task |
-| Merging never outlasts the work | The `require-batch-merge` hook refuses more than two PRs through the queue without `--batch` or `--serial`; see `scripts/ci/QUEUE.md` |
+| Merging never outlasts the work | The `require-batch-merge` hook refuses a direct `gh pr merge` and more than two PRs through the queue without `--batch`, `--serial` or `--drain`; the queue refuses a change whose migration has not run; see `scripts/ci/QUEUE.md` |
+| Numbers never collide | The `numbering-check` CI job fails when two numbered files share a number or a task file gains a running number; `scripts/next-number.sh` reserves the next free one |
+| Runners never fail quietly | The hourly `runner-watch` workflow comments on the audit issue when a runner is offline, fewer than two are online, or a run sits queued for ten minutes; see `scripts/ci/RUNNERS.md` |
 | A clean folder is part of done | The `require-clean-worktree` hook refuses to finish a task in a worktree with files outside `.scratch/`, stray images or build output, or a process still running from it; the merge queue refuses a pull request whose worktree is not clean |
 | Shared code changes alone | The `shared-check` CI job fails a pull request that edits a path in `scripts/ci/shared-paths.txt` together with other work |
 | Work always has an ending | The `block-loose-ends` hook refuses `gh pr close` without a comment and a detached worktree; `scripts/worktrees.sh` removes ended worktrees and their branches, keeping a closed branch's commits under a `closed/` tag; the nightly audit reports branches left on the remote after their pull request ended |

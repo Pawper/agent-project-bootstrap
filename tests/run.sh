@@ -173,6 +173,15 @@ eq "a quoted label with a space but no state" "gh issue create" "$(state_label_r
 eq "gh issue list is fine" "" "$(state_label_reason 'gh issue list')"
 eq "create in a later command" "gh issue create" "$(state_label_reason 'git push && gh issue create -t x')"
 
+printf '
+# project_flag_reason
+'
+eq "no --project" "gh issue create" "$(project_flag_reason 'gh issue create -t x -b y')"
+eq "--project" "" "$(project_flag_reason 'gh issue create -t x --project "Retro Jam"')"
+eq "-p" "" "$(project_flag_reason 'gh issue create -t x -p Board')"
+eq "a state label alone is not enough here" "gh issue create" "$(project_flag_reason 'gh issue create -t x -l state:ready')"
+eq "--web" "" "$(project_flag_reason 'gh issue create --web')"
+
 printf '\n# batch_merge_reason\n'
 eq "three PRs with no flag" "3" "$(batch_merge_reason 'sh scripts/ci/merge-queue.sh 41 42 45')"
 eq "three PRs with --batch" "" "$(batch_merge_reason 'sh scripts/ci/merge-queue.sh --batch 41 42 45')"
@@ -296,6 +305,8 @@ eq "a tool whose folder is on the machine PATH" "ok" "$(tool_on_machine_path '/c
 eq "a tool missing from the machine PATH" "warn" "$(tool_on_machine_path '/c/Users/me/AppData/Roaming/npm/node' 'C:\Windows;C:\Program Files\Git\cmd')"
 eq "a restricted machine policy warns" "warn" "$(policy_verdict 'MachinePolicy=Undefined UserPolicy=Undefined Process=Undefined CurrentUser=Undefined LocalMachine=Restricted')"
 eq "an open policy is fine" "ok" "$(policy_verdict 'MachinePolicy=Undefined LocalMachine=RemoteSigned')"
+eq "a shell that sets NoDefaultCurrentDirectoryInExePath warns" "warn" "$(exepath_verdict 1)"
+eq "a shell that does not set it is fine" "ok" "$(exepath_verdict '')"
 
 printf '\n# board digest\n'
 . "$root/scripts/board/board-lib.sh"
@@ -661,6 +672,183 @@ eq "SETUP.md no longer counts when the manual is elsewhere" "migrations/0002_x.s
 SETUP.md' "$own_pats")"
 eq "crlf found" "yes" "$(has_crlf "$(printf 'a\r\nb')")"
 eq "lf only" "" "$(has_crlf "$(printf 'a\nb')")"
+
+printf '\n# quoted text is text, and nothing waits on input\n'
+eq "a multi-line --body with quotes keeps the label after it" "" "$(state_label_reason 'gh issue create --title "Fix chimes" --body "First line.
+The setting says "off" here.
+Last line." --label state:in-progress')"
+eq "a body holding && ; | and ( ) keeps the label after it" "" "$(state_label_reason 'gh issue create --title t --body "Run a && b; then c | d (mostly)." --label state:ready')"
+eq "a single-quoted multi-line body keeps the label after it" "" "$(state_label_reason "gh issue create --title t --body 'One.
+Two.' --label \"state: in progress\"")"
+eq "a multi-line body with no label is still refused" "gh issue create" "$(state_label_reason 'gh issue create --title t --body "One.
+Two."')"
+eq "an rm inside a quoted substitution is still seen" "rm" "$(delete_reason 'echo "$(rm -rf build)"')"
+eq "an rm inside plain quotes is text" "" "$(delete_reason 'git commit -m "rm the old files; && done"')"
+eq "a bare cat writing to /dev/null waits forever" "cat >> /dev/null" "$(stdin_wait_reason 'cat >> /dev/null')"
+eq "a bare cat waits" "cat" "$(stdin_wait_reason 'cd x && cat')"
+eq "read with nothing to read waits" "read answer" "$(stdin_wait_reason 'read answer')"
+eq "head with no file waits" "head -5" "$(stdin_wait_reason 'head -5')"
+eq "cat of a file is fine" "" "$(stdin_wait_reason 'cat a.txt >> b.txt')"
+eq "cat fed by a pipe is fine" "" "$(stdin_wait_reason 'git log | cat')"
+eq "cat fed by a redirect is fine" "" "$(stdin_wait_reason 'cat < in.txt')"
+eq "cat fed by a heredoc is fine" "" "$(stdin_wait_reason 'cat > f.txt <<EOF
+body
+EOF')"
+eq "tee at the end of a pipe is fine" "" "$(stdin_wait_reason 'make | tee out.log')"
+eq "the word cat in a string is fine" "" "$(stdin_wait_reason 'echo "cat" && ls')"
+
+printf '\n# merging only through the queue\n'
+eq "a direct merge" "gh pr merge" "$(direct_merge_reason 'gh pr merge 41 --squash')"
+eq "a direct merge after cd" "gh pr merge" "$(direct_merge_reason 'cd ../wt && gh pr merge 41 --merge --delete-branch')"
+eq "turning auto-merge off is allowed" "" "$(direct_merge_reason 'gh pr merge 41 --disable-auto')"
+eq "the queue itself is not a direct merge" "" "$(direct_merge_reason 'sh scripts/ci/merge-queue.sh --serial 41')"
+eq "viewing a pull request is not a merge" "" "$(direct_merge_reason 'gh pr view 41')"
+eq "a drain names its mode" "" "$(batch_merge_reason 'sh scripts/ci/merge-queue.sh --drain')"
+eq "a drain with more than two numbers is still named" "" "$(batch_merge_reason 'sh scripts/ci/merge-queue.sh --drain 1 2 3')"
+
+printf '\n# drain\n'
+. "$root/templates/scripts/ci/batch-lib.sh"
+open='41	false	MERGEABLE	green	main
+42	false	MERGEABLE	pending	main
+43	true	MERGEABLE	green	main
+44	false	CONFLICTING	green	main
+45	false	MERGEABLE	green	release
+46	false	UNKNOWN	green	main
+47	false	MERGEABLE	red	main
+48	false	MERGEABLE	pending	main'
+eq "green, not draft, not conflicting, aimed at main" "41
+46" "$(drain_candidates "$open" main)"
+eq "a pull request already tried is not picked again" "46" "$(drain_candidates "$open" main '41')"
+eq "running ones are counted, drafts and other bases are not" "2" "$(drain_waiting "$open" main)"
+eq "nothing open, nothing picked" "" "$(drain_candidates '' main)"
+eq "red pull requests get one retry" "47" "$(drain_retry "$open" main '')"
+eq "a red pull request already retried is not retried again" "" "$(drain_retry "$open" main '47')"
+eq "a conflict needs attention at once" "44	has conflicts with main" "$(drain_attention "$open" main '')"
+eq "red again after its retry needs attention" "44	has conflicts with main
+47	failed CI twice" "$(drain_attention "$open" main '47')"
+eq "drafts and other bases never need attention here" "" "$(drain_attention "43	true	CONFLICTING	red	main
+45	false	CONFLICTING	red	release" main '43 45')"
+
+printf '\n# numbering\n'
+. "$root/templates/scripts/ci/numbering-lib.sh"
+eq "the glob for a kind" "supabase/migrations/*.sql" "$(numbering_glob '# note
+migration supabase/migrations/*.sql
+seed seed/*.json' migration)"
+eq "an unknown kind" "" "$(numbering_glob 'migration m/*.sql' setup)"
+paths='supabase/migrations/0021_chime_volume.sql
+supabase/migrations/0022_station_chime_volume.sql
+supabase/migrations/README.md
+docs/0099_not_a_migration.sql
+supabase\migrations\0023_testing_program.sql'
+eq "numbers of matching files, padding kept, either slash" "0021
+0022
+0023" "$(numbers_in "$paths" 'supabase/migrations/*.sql')"
+eq "the next free number" "0024" "$(next_free_number "$(numbers_in "$paths" 'supabase/migrations/*.sql')")"
+eq "the first number when there are none" "0001" "$(next_free_number '')"
+eq "padding follows the widest number" "00008" "$(next_free_number '00007
+3')"
+eq "two files sharing a number" "0022	0022_a.sql 0022_b.sql" "$(duplicate_numbers 'm/0021_x.sql
+m/0022_a.sql
+m/0022_b.sql' 'm/*.sql')"
+eq "22 and 0022 are the same number" "0022	22_a.sql 0022_b.sql" "$(duplicate_numbers 'm/22_a.sql
+m/0022_b.sql' 'm/*.sql')"
+eq "no duplicates, nothing" "" "$(duplicate_numbers 'm/0021_x.sql
+m/0022_y.sql' 'm/*.sql')"
+eq "running task numbers are found" "## 14. Add the exporter
+- [ ] 7: Fix the chime
+T12) Rename the page
+7p. Run the migration" "$(running_task_lines '## 14. Add the exporter
+- [ ] 7: Fix the chime
+T12) Rename the page
+7p. Run the migration
+## #231 Add the exporter
+- [ ] #232 Fix the chime
+Some prose with 3. in the middle')"
+eq "issue-numbered tasks pass" "" "$(running_task_lines '## #231 Add the exporter
+- [x] #45 Ship it')"
+manual=$(cat "$fx/setup-manual.md")
+eq "a migration still not run" "0024_station_chimes_off.sql	not yet run" "$(pending_migrations "$manual" 'supabase/migrations/0024_station_chimes_off.sql
+src/chimes.ts' 'supabase/migrations/*.sql')"
+eq "a migration marked done passes, even with the instruction text" "" "$(pending_migrations "$manual" 'supabase/migrations/0007_schedule_versions.sql' 'supabase/migrations/*.sql')"
+eq "a migration the manual never mentions" "0025_new.sql	not in the manual" "$(pending_migrations "$manual" 'supabase/migrations/0025_new.sql' 'supabase/migrations/*.sql')"
+eq "no migration added, nothing" "" "$(pending_migrations "$manual" 'src/a.ts' 'supabase/migrations/*.sql')"
+
+printf '\n# decision numbers inside a file\n'
+brief='## Decisions
+
+| ID | Decision | Date |
+|---|---|---|
+| D1 | Repo and board 5 are the source of truth. | 2026-09-25 |
+| D2 | One-time price. | 2026-09-26 |
+| D55 | Chimes per station. | 2026-10-07 |
+
+The chime (D34) and the price (D38) are referenced here, not defined.
+- **D56** Volume per station.
+## D57 Wear tiles'
+eq "the kind's prefix" "D" "$(numbering_prefix 'migration m/*.sql
+decision docs/product-brief.md D' decision)"
+eq "a file-name kind has no prefix" "" "$(numbering_prefix 'migration m/*.sql' migration)"
+eq "definitions in table rows, bold and headings, not prose" "1
+2
+55
+56
+57" "$(id_definitions "$brief" D)"
+eq "D10 is not a definition of D1" "10" "$(id_definitions '| D10 | x |' D)"
+eq "a word that only starts with the prefix is not a definition" "" "$(id_definitions '- Done 2026-10-05' D)"
+eq "no duplicates in a clean brief" "" "$(duplicate_ids "$brief" D)"
+eq "two pull requests that both took D55" "D55" "$(duplicate_ids "$brief
+| D55 | Another decision. | 2026-10-08 |" D)"
+eq "the next free decision" "D58" "$(next_free_id "$(id_definitions "$brief" D)" D)"
+eq "the first decision" "D1" "$(next_free_id '' D)"
+
+printf '\n# template refresh\n'
+. "$root/scripts/sync/sync-lib.sh"
+owned='# comment
+scripts/ci/merge-queue.sh
+.github/workflows/audit.yml
+default scripts/ci/task-files.txt'
+eq "plugin-owned paths" "scripts/ci/merge-queue.sh
+.github/workflows/audit.yml" "$(owned_paths "$owned")"
+eq "config with defaults" "scripts/ci/task-files.txt" "$(default_paths "$owned")"
+eq "a Windows checkout is the same text" "yes" "$(same_text "$(printf 'a\r\nb\r\n')" "$(printf 'a\nb')")"
+eq "a changed line is not" "no" "$(same_text 'a
+b' 'a
+c')"
+tplyml='name: CI
+on: [push]
+jobs:
+  classify:
+    runs-on: x
+  numbering-check:
+    runs-on: x
+  ci-passed:
+    name: CI passed
+    needs: [classify]'
+projyml='name: CI
+jobs:
+  classify:
+    runs-on: x
+  ci-passed:
+    runs-on: x
+env:
+  numbering-check: not a job'
+eq "jobs a workflow defines" "classify
+numbering-check
+ci-passed" "$(workflow_jobs "$tplyml")"
+eq "jobs the project's ci.yml lacks" "numbering-check" "$(missing_jobs "$tplyml" "$projyml")"
+eq "lines the project's file lacks, comments ignored" "tasks.md merge=union" "$(missing_lines '# comment
+* text=auto eol=lf
+tasks.md merge=union' '* text=auto eol=lf')"
+
+printf '\n# runner watch\n'
+runs=$(printf '11\tCI\tfeature\tqueued\t1000\n12\tCI\tmain\tqueued\t1500\n13\tCI\tother\tin_progress\t100\n14\tCI\tx\tqueued\t1900\n')
+eq "runs queued past ten minutes, oldest first" "11	CI	feature	16
+12	CI	main	8" "$(stuck_runs "$runs" 2000 5)"
+eq "nothing stuck" "" "$(stuck_runs "$runs" 1100 10)"
+eq "an offline runner and a lone online one" "Runner build-2 is offline.
+Only 1 of 2 self-hosted runner(s) online; one runner makes every job wait for the last." "$(runner_problems "$(printf 'build-1\tonline\tfalse\nbuild-2\toffline\tfalse\n')")"
+eq "two online runners are fine" "" "$(runner_problems "$(printf 'build-1\tonline\ttrue\nbuild-2\tonline\tfalse\n')")"
+eq "no runners listed, nothing said" "" "$(runner_problems '')"
 
 printf '\n# owner console (node)\n'
 if command -v node >/dev/null 2>&1; then

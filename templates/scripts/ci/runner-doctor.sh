@@ -45,6 +45,14 @@ for tool in git node gh; do
   fi
 done
 
+# 2b. A variable this shell sets that a runner must never inherit.
+ev=$(exepath_verdict "$NoDefaultCurrentDirectoryInExePath")
+if [ "$ev" = warn ]; then
+  say warn "this shell sets NoDefaultCurrentDirectoryInExePath=1 (Git Bash does). Never start run.cmd from it: every job would inherit it, and cmd would refuse to run gradlew.bat or any program from the current folder by its bare name. Install the runner as a service, or start it with: env -u NoDefaultCurrentDirectoryInExePath cmd //c run.cmd"
+else
+  say ok "NoDefaultCurrentDirectoryInExePath is not set in this shell"
+fi
+
 # 3. PowerShell execution policy.
 if command -v powershell >/dev/null 2>&1; then
   pol=$(powershell -NoProfile -Command 'Get-ExecutionPolicy -List | ForEach-Object { "$($_.Scope)=$($_.ExecutionPolicy)" }' 2>/dev/null | tr '\r\n' '  ')

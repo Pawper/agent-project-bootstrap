@@ -1,0 +1,5 @@
+# Files where tasks are listed, if the project keeps any besides issues.
+# A pull request that adds a task here with a running number ("## 14.",
+# "- [ ] 7:") instead of its issue number ("#123") fails the numbering
+# check. One path per line. Empty means the check is off.
+tasks.md
