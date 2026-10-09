@@ -111,7 +111,7 @@ rate_stop() {
 # or older than three hours, is a crash's leftover and is taken over.
 lock_file=$flaky_dir/lock
 have_lock=no
-unlock() { [ "$have_lock" = yes ] && : > "$lock_file"; have_lock=no; }
+unlock() { [ "$have_lock" = yes ] && rm -f "$lock_file" 2>/dev/null; have_lock=no; }
 take_lock() {
   [ -z "$QUEUE_LOCKED" ] || return 0
   l=$(cat "$lock_file" 2>/dev/null || true)
@@ -332,16 +332,20 @@ serial_one() {
   tidy_worktree "$head_branch"
 }
 
-# typecheck_ok PATHS: the type-check, run once in each package the change
-# touches (the nearest folder above each changed file with a tsconfig.json),
-# or once from the root when QUEUE_TYPECHECK_COMMAND names the project's
-# own command. Returns non-zero on the first red package.
+# typecheck_ok PATHS [DIR]: the type-check, run once in each package the
+# change touches (the nearest folder above each changed file with a
+# tsconfig.json), or once from the root when QUEUE_TYPECHECK_COMMAND names
+# the project's own command. DIR is the checkout to run in (default here).
+# Returns non-zero on the first red package, with its output in
+# .scratch/queue/typecheck.err so the caller can name the first error.
 typecheck_ok() {
-  if [ -n "$QUEUE_TYPECHECK_COMMAND" ] || [ -z "$ts_roots" ]; then sh -c "$typecheck" >/dev/null 2>&1; return $?; fi
+  tc_root=${2:-.}
+  : > "$flaky_dir/typecheck.err"
+  if [ -n "$QUEUE_TYPECHECK_COMMAND" ] || [ -z "$ts_roots" ]; then (cd "$tc_root" && sh -c "$typecheck") >"$flaky_dir/typecheck.err" 2>&1; return $?; fi
   tc_dirs=$(printf '%s\n' "$1" | while IFS= read -r tc_f; do [ -n "$tc_f" ] && nearest_root "$tc_f" "$ts_roots"; done | sort -u)
   for tc_d in $tc_dirs; do
-    [ -f "$tc_d/tsconfig.json" ] || continue
-    (cd "$tc_d" && sh -c "$typecheck") >/dev/null 2>&1 || return 1
+    [ -f "$tc_root/$tc_d/tsconfig.json" ] || continue
+    (cd "$tc_root/$tc_d" && sh -c "$typecheck") >"$flaky_dir/typecheck.err" 2>&1 || return 1
   done
   return 0
 }
@@ -393,6 +397,14 @@ if [ "$mode" = drain ]; then
     waiting=$(drain_waiting "$open" "$base")
     n=$(printf '%s\n' "$pick" | sed '/^$/d' | wc -l | tr -d ' ')
     elapsed=$(( $(date +%s) - d_start ))
+    if [ "$n" -gt 0 ] && [ "$(drain_hold "$n" "$waiting")" = yes ] && [ "$elapsed" -lt $((drain_minutes * 60)) ]; then
+      # A serial merge now would move main under the ones still running
+      # and send them back round CI; the batch after it would be empty.
+      echo "round $round: $n green, $waiting still running CI; holding the serial merge until they finish, so it does not send them back round CI."
+      round=$((round - 1))
+      sleep 120
+      continue
+    fi
     if [ "$n" -eq 0 ]; then
       if [ "$waiting" -gt 0 ] && [ "$elapsed" -lt $((drain_minutes * 60)) ]; then
         echo "round $round: nothing new is green; $waiting pull request(s) still running CI, waiting two minutes."
@@ -404,7 +416,8 @@ if [ "$mode" = drain ]; then
       break
     fi
     echo "round $round: $n green pull request(s): $(printf '%s' "$pick" | tr '\n' ' ')"
-    if [ "$n" -gt 2 ]; then sh "$0" --batch --base "$base" $pick; else sh "$0" --serial --base "$base" $pick; fi
+    QUEUE_IN_DRAIN=1; export QUEUE_IN_DRAIN
+    if [ "$n" -gt 2 ]; then sh "$0" --batch --base "$base" $pick || true; else sh "$0" --serial --base "$base" $pick || true; fi
     tried="$tried $(printf '%s' "$pick" | tr '\n' ' ')"
     if [ $(( $(date +%s) - d_start )) -ge $((drain_minutes * 60)) ]; then
       echo "Drained for $drain_minutes minutes; stopping. Run --drain again to go on."
@@ -414,9 +427,7 @@ if [ "$mode" = drain ]; then
   echo "queue done"
   if [ -n "$attention" ]; then
     echo "Needs attention:"
-    printf '%s
-' "$attention" | awk -F'	' '{ printf "  #%s %s
-", $1, $2 }'
+    printf '%s\n' "$attention" | awk -F'\t' '{ printf "  #%s %s\n", $1, $2 }'
     exit 1
   fi
   exit 0
@@ -424,11 +435,16 @@ fi
 
 if [ "$mode" = serial ]; then
   for pr in $prs; do serial_one "$pr"; done
-  echo "queue done"
+  [ -n "$QUEUE_IN_DRAIN" ] || echo "queue done"
   exit 0
 fi
 
-# Batch mode.
+# Batch mode. The batch is built in its own worktree, never in the main
+# checkout, so a person working there is not switched onto the batch
+# branch under their feet. QUEUE_WORKTREE names the folder; the default is
+# a sibling of the repository called <repo>-wt-batch, which is reused from
+# one batch to the next. Each package's node_modules is linked from the
+# main checkout when the worktree has none, so nothing is installed twice.
 git fetch -q origin "$base"
 day=$(date -u +%Y-%m-%d)
 n=1
@@ -436,43 +452,71 @@ branch=$(batch_branch_name "$day" "$n")
 while git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; do
   n=$((n + 1)); branch=$(batch_branch_name "$day" "$n")
 done
-git checkout -q -B "$branch" "origin/$base"
-echo "batch branch $branch from origin/$base"
+main_dir=$(pwd)
+wt=${QUEUE_WORKTREE:-"$(cd .. && pwd)/$(basename "$main_dir")-wt-batch"}
+if [ -e "$wt/.git" ]; then
+  git -C "$wt" checkout -q -B "$branch" "origin/$base"
+else
+  git worktree add -q -B "$branch" "$wt" "origin/$base"
+fi
+# link_modules: a junction on Windows, a symlink elsewhere, for each
+# package's node_modules the worktree lacks and the main checkout has.
+link_modules() {
+  git ls-files -- package.json '*/package.json' 2>/dev/null | sed 's#/package\.json$##; s#^package\.json$#.#' | while IFS= read -r d; do
+    [ -d "$main_dir/$d/node_modules" ] && [ ! -e "$wt/$d/node_modules" ] || continue
+    mkdir -p "$wt/$d"
+    case "$(uname -s 2>/dev/null)" in
+      MINGW*|MSYS*|CYGWIN*) cmd //c mklink /J "$(cygpath -w "$wt/$d/node_modules")" "$(cygpath -w "$main_dir/$d/node_modules")" >/dev/null 2>&1 || true ;;
+      *) ln -s "$main_dir/$d/node_modules" "$wt/$d/node_modules" 2>/dev/null || true ;;
+    esac
+  done
+}
+link_modules
+echo "batch branch $branch in $wt from origin/$base"
+
+# The base is checked before anything is merged. A red base (packages not
+# installed, generated types stale) made every pull request look red
+# after its merge, and all of them were dropped for a fault none of them
+# had. Nothing is dropped for that; the batch stops and says what is red.
+if [ -n "$typecheck" ] && ! typecheck_ok "$(git -C "$wt" ls-files)" "$wt"; then
+  echo "origin/$base is red here before any merge: $(head -n 1 "$flaky_dir/typecheck.err" 2>/dev/null | tr -d '\r')"
+  echo "Nothing was dropped for it. Fix the checkout at $wt (install the packages, regenerate the types) and run the batch again."
+  exit 1
+fi
 
 carried=""
 dropped=""
-good=$(git rev-parse HEAD)
+good=$(git -C "$wt" rev-parse HEAD)
 for pr in $prs; do
   why=$(folder_blocks "$pr"); [ -n "$why" ] || why=$(migration_blocks "$pr")
   if [ -n "$why" ]; then batch_line "$pr" "refused" "$why"; continue; fi
-  git fetch -q origin "pull/$pr/head" || { batch_line "$pr" "dropped" "could not fetch it"; dropped="$dropped $pr"; continue; }
-  head=$(git rev-parse FETCH_HEAD)
+  git -C "$wt" fetch -q origin "pull/$pr/head" || { batch_line "$pr" "dropped" "could not fetch it"; dropped="$dropped $pr"; continue; }
+  head=$(git -C "$wt" rev-parse FETCH_HEAD)
   title=$(gh pr view "$pr" --json title -q .title 2>/dev/null || echo "PR $pr")
-  if ! git merge -q --no-ff --no-edit -m "Merge PR #$pr into $branch: $title" "$head" >/dev/null 2>&1; then
-    git merge --abort >/dev/null 2>&1 || true
-    git reset -q --hard "$good"
+  if ! git -C "$wt" merge -q --no-ff --no-edit -m "Merge PR #$pr into $branch: $title" "$head" >/dev/null 2>&1; then
+    git -C "$wt" merge --abort >/dev/null 2>&1 || true
+    git -C "$wt" reset -q --hard "$good"
     batch_line "$pr" "dropped" "conflicts with the batch so far"
     dropped="$dropped $pr"
     continue
   fi
-  changed=$(git diff --name-only "origin/$base...$head")
-  if [ -n "$typecheck" ] && ! typecheck_ok "$changed"; then
-    git reset -q --hard "$good"
-    batch_line "$pr" "dropped" "the type-check went red after merging it"
+  changed=$(git -C "$wt" diff --name-only "origin/$base...$head")
+  if [ -n "$typecheck" ] && ! typecheck_ok "$changed" "$wt"; then
+    git -C "$wt" reset -q --hard "$good"
+    batch_line "$pr" "dropped" "the type-check went red after merging it: $(head -n 1 "$flaky_dir/typecheck.err" 2>/dev/null | tr -d '\r')"
     dropped="$dropped $pr"
     continue
   fi
   red=""
   for f in $(tests_for_diff "$changed"); do
-    [ -f "$f" ] || continue
-    rc=0; $test_one "$f" >/dev/null 2>"$flaky_dir/test.err" || rc=$?
+    [ -f "$wt/$f" ] || continue
+    rc=0; (cd "$wt" && $test_one "$f") >/dev/null 2>"$flaky_dir/test.err" || rc=$?
     if [ "$rc" -eq 2 ]; then
       # The runner could not start. That is not a red test, and dropping
       # every pull request for it would empty the batch for nothing.
       echo "The test runner could not run $f: $(tail -n 3 "$flaky_dir/test.err" 2>/dev/null | tr '\r\n' '  ')"
       echo "Nothing was dropped for it. Fix the runner, or set QUEUE_TEST_COMMAND to the project's one-file test command, and run the batch again."
-      git reset -q --hard "$good"
-      git checkout -q - 2>/dev/null || true
+      git -C "$wt" reset -q --hard "$good"
       exit 1
     fi
     if [ "$rc" -ne 0 ]; then
@@ -482,7 +526,7 @@ for pr in $prs; do
     fi
   done
   if [ -n "$red" ]; then
-    git reset -q --hard "$good"
+    git -C "$wt" reset -q --hard "$good"
     batch_line "$pr" "dropped" "$red went red after merging it"
     dropped="$dropped $pr"
     continue
@@ -490,7 +534,7 @@ for pr in $prs; do
   # Cancel the PR's own CI run; the batch's one run covers it.
   gh run list --branch "$(gh pr view "$pr" --json headRefName -q .headRefName)" --status in_progress --json databaseId -q '.[].databaseId' 2>/dev/null \
     | while read -r id; do [ -n "$id" ] && gh run cancel "$id" >/dev/null 2>&1 || true; done
-  good=$(git rev-parse HEAD)
+  good=$(git -C "$wt" rev-parse HEAD)
   carried="$carried$pr	$title
 "
   batch_line "$pr" "merged into the batch"
@@ -498,19 +542,18 @@ done
 
 if [ -z "$carried" ]; then
   echo "Nothing survived the batch; running the serial queue for all of them."
-  git checkout -q -
   for pr in $dropped; do serial_one "$pr"; done
   exit 0
 fi
 
-if [ -f status/build.sh ]; then
-  sh status/build.sh >/dev/null
-  if ! git diff --quiet -- STATUS.md; then
-    git add STATUS.md && git commit -q -m "Rebuild the status page for $branch"
+if [ -f "$wt/status/build.sh" ]; then
+  (cd "$wt" && sh status/build.sh) >/dev/null
+  if ! git -C "$wt" diff --quiet -- STATUS.md; then
+    git -C "$wt" add STATUS.md && git -C "$wt" commit -q -m "Rebuild the status page for $branch"
   fi
 fi
 
-git push -q -u origin "$branch"
+git -C "$wt" push -q -u origin "$branch"
 body=$(batch_pr_body "$carried")
 batch_pr=$(gh pr create --base "$base" --head "$branch" --title "Batch $day: $(printf '%s' "$carried" | wc -l | tr -d ' ') pull requests" --body "$body" --json number -q .number 2>/dev/null \
   || gh pr create --base "$base" --head "$branch" --title "Batch $day" --body "$body" | sed 's#.*/##')
@@ -525,10 +568,9 @@ echo "batch PR #$batch_pr merged into $base with a merge commit"
 for pr in $(printf '%s' "$carried" | cut -f1); do
   tidy_worktree "$(gh pr view "$pr" --json headRefName -q .headRefName 2>/dev/null || true)"
 done
-echo "queue done"
+[ -n "$QUEUE_IN_DRAIN" ] || echo "queue done"
 
 if [ -n "$dropped" ]; then
   echo "serial queue for the dropped PRs:$dropped"
-  git checkout -q "$base" 2>/dev/null || true
   for pr in $dropped; do serial_one "$pr"; done
 fi

@@ -3,10 +3,15 @@
 # reopened, so Status follows at once.
 #
 # Writing to a project needs a token with the project scope; the default
-# workflow token cannot. Create a fine-grained token with "Projects: read
-# and write" and "Issues: read and write", store it as the repository
-# secret PROJECT_TOKEN, and set the two variables below in the repository's
-# Actions variables: BOARD_NUMBER and BOARD_OWNER.
+# workflow token cannot. Create a token and store it as the repository
+# secret PROJECT_TOKEN, and set two Actions variables: BOARD_NUMBER and
+# BOARD_OWNER. The simplest token that works is a classic one with the
+# "project" scope (and "repo" for a private repository), created by a user
+# who can read this repository; fine-grained tokens do not offer a Projects
+# permission for every owner type. Only the gh call that writes to the
+# board uses it. The checkout uses the default token, which is why this
+# workflow needs "contents: read" below: without it the checkout fails with
+# "repository not found" on every issue event.
 name: Board sync
 
 on:
@@ -17,6 +22,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  contents: read
   issues: write
 
 jobs:

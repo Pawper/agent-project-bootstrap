@@ -296,6 +296,29 @@ task_tier() {
   echo routine
 }
 
+# daemon_stop_reason COMMAND
+# Print the command that stops a build daemon shared by every build on the
+# machine: gradlew --stop, gradle --stop, nx reset, or a daemon kill
+# (nx daemon --stop, dotnet build-server shutdown). On a machine that also
+# hosts a self-hosted runner, that kills the runner's build mid-job. Print
+# nothing otherwise, or when the command carries DAEMON_STOP_OK=1, which
+# says no runner is on this machine.
+daemon_stop_reason() {
+  case "$1" in *DAEMON_STOP_OK=1*) return 0 ;; esac
+  split_commands "$1" | awk '
+    {
+      line = $0
+      gsub(/["'\'']/, "", line)
+      n = split(line, t, /[ \t]+/)
+      i = 1
+      while (i <= n && t[i] ~ /^(npx|bunx|pnpm|yarn)$/) i++
+      c = t[i]; sub(/.*[\/\\]/, "", c); sub(/\.(bat|cmd|exe)$/, "", c)
+      if (c ~ /^(gradlew|gradle)$/) { for (j = i + 1; j <= n; j++) if (t[j] == "--stop") { print c " --stop"; exit } }
+      if (c == "nx" && (t[i + 1] == "reset" || (t[i + 1] == "daemon" && t[i + 2] == "--stop"))) { print "nx " t[i + 1]; exit }
+      if (c == "dotnet" && t[i + 1] == "build-server" && t[i + 2] == "shutdown") { print "dotnet build-server shutdown"; exit }
+    }'
+}
+
 # model_rank MODEL
 # Print 1 for haiku, 2 for sonnet, 3 for opus, 4 for fable, 0 for unknown.
 model_rank() {

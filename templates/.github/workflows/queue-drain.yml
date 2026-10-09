@@ -1,0 +1,51 @@
+# The merge queue on a timer that does not die with a chat session. A
+# drain run with /loop stops when the app closes; six green pull requests
+# once sat all night for that. This runs --drain every thirty minutes on a
+# self-hosted runner, which has the checkout, the packages and gh.
+#
+# The merge needs a token. The default GITHUB_TOKEN can merge, but a push
+# it makes does not start other workflows, so the full run on main would
+# not happen. Give it a classic token with "repo" (and "workflow" if the
+# queue ever touches workflows), created by a user who can push to main,
+# as the repository secret QUEUE_TOKEN. Without the secret the job says so
+# and stops. Adjust the runner labels and the schedule to the project.
+name: Queue drain
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: queue-drain
+  cancel-in-progress: false
+
+jobs:
+  drain:
+    runs-on: [self-hosted]
+    timeout-minutes: 100
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.QUEUE_TOKEN || github.token }}
+      - name: Drain the queue
+        env:
+          GH_TOKEN: ${{ secrets.QUEUE_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "QUEUE_TOKEN is not set; a merge by the default token would not start the full run on main. See the comment at the top of this workflow."
+            exit 0
+          fi
+          git config user.name "merge-queue"
+          git config user.email "merge-queue@users.noreply.github.com"
+          sh scripts/ci/merge-queue.sh --drain

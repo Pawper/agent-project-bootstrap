@@ -100,6 +100,17 @@ drain_attention() {
     }' | sort -n
 }
 
+# drain_hold GREEN WAITING
+# Print "yes" when the drain should wait before merging: one or two green
+# pull requests would merge serially while WAITING others are still
+# running CI, and a serial merge moves main under every one of them, so
+# they are updated and sent back round CI and the batch that follows has
+# nothing. Hold until they finish, then batch. Print "no" when nothing is
+# waiting, nothing is green, or there are enough green ones to batch now.
+drain_hold() {
+  if [ "${1:-0}" -gt 0 ] && [ "${1:-0}" -le 2 ] && [ "${2:-0}" -gt 0 ]; then echo yes; else echo no; fi
+}
+
 # rate_wait RATE NOW [FLOOR]
 # RATE is "remaining<TAB>reset_epoch" as gh api rate_limit reports it for
 # the core API. Print the seconds the queue should wait before spending

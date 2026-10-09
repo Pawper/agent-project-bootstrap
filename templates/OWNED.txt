@@ -5,6 +5,7 @@
 # is never replaced, only reported on.
 .github/workflows/audit.yml
 .github/workflows/board-sync.yml
+.github/workflows/queue-drain.yml
 .github/workflows/runner-check.yml
 .github/workflows/runner-watch.yml
 .github/workflows/state-label.yml

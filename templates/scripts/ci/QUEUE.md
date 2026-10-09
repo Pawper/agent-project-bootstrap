@@ -20,7 +20,22 @@ Most of the time, nobody should pick the numbers. `--drain` reads every open pul
 sh scripts/ci/merge-queue.sh --drain
 ```
 
-That is the command for "merge what is ready", so no agent writes its own loop. To keep it going through a working session, run it on a timer: `/loop 20m sh scripts/ci/merge-queue.sh --drain`. A pull request a round could not merge is not tried again in that drain; its line says why. A red pull request gets one retry of its failed jobs. When the drain ends, every pull request that conflicts with main or failed twice is listed under "Needs attention" and the drain exits non-zero, so an agent running it on a timer is woken by the failure instead of reading past a log line.
+That is the command for "merge what is ready", so no agent writes its own loop. A pull request a round could not merge is not tried again in that drain; its line says why. A red pull request gets one retry of its failed jobs. When the drain ends, every pull request that conflicts with main or failed twice is listed under "Needs attention" and the drain exits non-zero, so an agent running it on a timer is woken by the failure instead of reading past a log line.
+
+The drain holds a serial merge while other pull requests are still running CI. One green pull request merged alone moves main under every one of them, they are updated and sent back round CI, and the batch that should have followed has nothing. So with one or two green and others pending, the drain waits two minutes at a time until they finish, then batches; the hold is bounded by `QUEUE_DRAIN_MINUTES`.
+
+## The queue on a timer
+
+A drain started with `/loop` runs only while that session is open; close the app and six green pull requests sit until morning. Two ways to keep it going without a session:
+
+- **A workflow.** `.github/workflows/queue-drain.yml` runs `--drain` every thirty minutes on a self-hosted runner. It needs a classic token with `repo` as the secret `QUEUE_TOKEN`, because a merge made with the default token does not start the full run on main. Adjust the runner labels and the schedule.
+- **An OS task.** On Windows, a scheduled task that runs `sh scripts/ci/merge-queue.sh --drain` from the repository every thirty minutes under the user who is signed in to gh; on macOS or Linux, the same line in cron. The queue's lock keeps a late run from overlapping an early one.
+
+With a session open as well, `/loop 20m sh scripts/ci/merge-queue.sh --drain` still works; the lock refuses the second of two that overlap.
+
+## Where the batch is built
+
+The batch is built in its own worktree, a sibling of the repository named `<repo>-wt-batch` or the folder `QUEUE_WORKTREE` names, never in the main checkout, so a person working there is not switched onto the batch branch mid-drain. The worktree is reused; each package's `node_modules` is linked from the main checkout when the worktree has none. Before anything is merged, the type-check runs once on the base there. A red base (packages not installed, generated types stale) stops the batch with "main is red here" and the first error, and drops nobody; that once dropped eight green pull requests for a fault none of them had. A test runner that cannot start stops the batch the same way.
 
 ## Inside the API budget
 

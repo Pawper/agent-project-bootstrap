@@ -6,7 +6,11 @@ on:
   issues:
     types: [opened, edited]
 
+# "contents: read" is for the checkout; a permissions block that names
+# only issues takes contents away, and the checkout fails with
+# "repository not found".
 permissions:
+  contents: read
   issues: write
 
 jobs:
