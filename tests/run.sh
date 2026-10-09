@@ -619,6 +619,22 @@ specs/constitution.md')"
 eq "many spec folders warns" "many 2" "$(spec_check_reason 'src/a.ts
 specs/sign-in/spec.md
 specs/billing/spec.md')"
+eq "src that names its spec in the body is fine" "" "$(spec_check_reason 'src/auth.ts' 'Adds the sign-in form.
+
+Spec: specs/sign-in')"
+eq "a spec path mentioned in the body counts" "" "$(spec_check_reason 'src/auth.ts' 'See specs/sign-in/spec.md for the flow.')"
+eq "a body that names no spec is still missing" "missing" "$(spec_check_reason 'src/auth.ts' 'Adds the sign-in form. Closes #12')"
+eq "the constitution named in the body does not count" "missing" "$(spec_check_reason 'src/auth.ts' 'per specs/constitution.md')"
+
+printf '\n# rerun-free classes\n'
+eq "the directive names the classes" "docs specs status" "$(rerun_free_classes "$rules")"
+eq "no directive, nothing" "" "$(rerun_free_classes 'app src/*')"
+eq "the directive is not a class" "app" "$(classify_paths 'src/a.ts' '!rerun-free docs
+app src/*')"
+eq "main moved only in a free class, no re-run" "no" "$(needs_rerun 'app specs' 'specs docs' 'docs specs status')"
+eq "main moved in a free class and the app, re-run" "yes" "$(needs_rerun 'app specs' 'specs app' 'docs specs status')"
+eq "ci on main still re-runs" "yes" "$(needs_rerun 'app' 'docs ci' 'docs specs status')"
+eq "other on main still re-runs" "yes" "$(needs_rerun 'app' 'docs other' 'docs specs status')"
 eq "a spec class" "specs" "$(classify_paths 'specs/sign-in/spec.md' "$rules")"
 
 printf '\n# board mappings\n'
@@ -671,7 +687,9 @@ eq "migration with SETUP.md is fine" "" "$(setup_check_reason 'migrations/0002_x
 SETUP.md' "$setup_pats")"
 eq "no setup file, nothing to check" "" "$(setup_check_reason 'src/a.ts
 docs/b.md' "$setup_pats")"
-eq "workflow change counts as setup" ".github/workflows/ci.yml" "$(setup_check_reason '.github/workflows/ci.yml' "$setup_pats")"
+eq "a workflow change is not a setup step" "" "$(setup_check_reason '.github/workflows/ci.yml' "$setup_pats")"
+eq "a dependency bump is not a setup step" "" "$(setup_check_reason 'package.json' "$setup_pats")"
+eq "a migration is a setup step" "migrations/002_x.sql" "$(setup_check_reason 'migrations/002_x.sql' "$setup_pats")"
 own_pats="manual docs/setup.md
 $setup_pats"
 eq "the manual defaults to SETUP.md" "SETUP.md" "$(setup_manual "$setup_pats")"

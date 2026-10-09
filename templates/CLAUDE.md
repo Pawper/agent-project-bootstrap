@@ -27,7 +27,7 @@ Many agents work here at once. Each kind of thing has one home, every rule has s
 ## Rules
 
 - File the issue first, with a State label. Work in an isolated worktree. Never force-push. Never delete; move aside.
-- A PR carries its feature's spec stub and a line in `SETUP.md` when a setup step changes, and nothing appended to a shared page.
+- Nothing is appended to a shared page. A PR names its spec in its body (`Spec: specs/<feature>`) and changes the spec only when the design changed; it changes `SETUP.md` only when a person must do a setup step; it changes a feature's status stub only when that feature's state changes; it adds no task to any file, because tasks are issues.
 - Tests prove the change and run per file. The full suite is the gate on main, not on the PR.
 - Everything a person sees is calm and plain, never a developer note: no issue numbers, fields or migrations in user-facing text.
 - Report what was not done and why, not only what was. Say which commands were refused.
@@ -64,7 +64,7 @@ Many agents work here at once. Each kind of thing has one home, every rule has s
 | Work always has an ending | The `block-loose-ends` hook refuses `gh pr close` without a comment and a detached worktree; `scripts/worktrees.sh` removes ended worktrees and their branches, keeping a closed branch's commits under a `closed/` tag; the nightly audit reports branches left on the remote after their pull request ended |
 | A session starts from facts | The `session-brief` hook prints main, open PRs, the queue, what is in progress, the last handoff and what waits on the owner at every session start; `.claude/session-brief.json` tells it where to look |
 | A setup change carries its line | The `setup-check` CI job fails a PR that changes a file in `scripts/ci/setup-paths.txt` without changing `SETUP.md` |
-| A source change carries its spec | The `spec-check` CI job fails a PR that changes `src/` without a change in a `specs/<feature>/` folder |
+| A source change belongs to a spec | The `spec-check` CI job fails a PR that changes `src/` without naming its spec in the body or changing a `specs/<feature>/` folder; the queue ignores moves on main in the `docs`, `specs` and `status` classes, so naming a spec never costs another PR a re-run |
 | Line endings stay LF | `.gitattributes` forces it and the `line-endings` CI job fails on any CRLF file |
 | Nothing drifts quietly | The nightly `audit` workflow comments on the issue labeled `audit` when an issue has no State, a merged PR left one stale, or a red-main issue is still open, and says nothing when clean |
 

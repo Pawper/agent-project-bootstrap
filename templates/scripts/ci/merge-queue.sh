@@ -318,7 +318,7 @@ serial_one() {
     batch_line "$pr" "waiting" "$why"
     return 0
   fi
-  if [ "$(needs_rerun "$pr_classes" "$main_classes")" = yes ]; then
+  if [ "$(needs_rerun "$pr_classes" "$main_classes" "$(rerun_free_classes "$rules")")" = yes ]; then
     gh pr update-branch "$pr" >/dev/null
     sync_worktree "$(gh pr view "$pr" --json headRefName -q .headRefName 2>/dev/null || true)"
     batch_line "$pr" "updated" "main moved in its classes (PR: ${pr_classes:-none}; main: ${main_classes:-none}), CI runs again"

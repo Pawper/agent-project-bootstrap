@@ -42,6 +42,10 @@ A direct `gh pr merge` is refused by the plugin's merge hook in any project that
 
 A pull request that adds a migration merges only after the migration has run. The queue reads the manual on the pull request's own branch, and refuses while the migration's line still says "Not yet run" or no line mentions it. Run it, change the line to "Done" with the date on that branch, and queue it again. Migrations are the `migration` kind in `.claude/numbering.txt`; the manual is `SETUP.md` or the `manual` line in `setup-paths.txt`.
 
+## What never costs another pull request a re-run
+
+The serial queue merges a green pull request without a second CI run when main moved only outside its classes, and updates it for a re-run when main moved inside them. Some classes can never make CI red: `docs`, `specs` and `status`, named on the `!rerun-free` line of `classes.txt`. The queue ignores them on main's side. Without that, ten pull requests that each named a spec invalidated one another on every merge and went round CI one at a time, which is what this file exists to prevent. If your project has another class whose moves are harmless, add it to that line.
+
 ## When to go serial
 
 By choice, for a change that must land alone: a migration, a change to the deploy, anything whose failure you want to see on its own. Say so:
