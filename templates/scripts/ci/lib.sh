@@ -33,8 +33,11 @@ EOF
 # needs_rerun PR_CLASSES MAIN_CLASSES
 # Print "yes" when a green PR must run CI again before merging because main
 # moved in a class the PR touches, in the ci class, or in an unclassified
-# file. Print "no" when main moved only outside the PR's classes.
+# file. Print "no" when main moved only outside the PR's classes, or has
+# not moved at all since the merge base: then nothing the PR touches,
+# classified or not, needs a second run.
 needs_rerun() {
+  [ -n "$(printf '%s' "$2" | tr -d ' \t')" ] || { echo no; return 0; }
   for nr_a in $1; do
     for nr_b in $2; do
       [ "$nr_a" = "$nr_b" ] && { echo yes; return 0; }

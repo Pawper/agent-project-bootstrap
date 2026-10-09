@@ -115,6 +115,10 @@ printf '\n# full_sweep_reason\n'
 eq "bare pytest" "pytest" "$(full_sweep_reason 'pytest')"
 eq "pytest with options only" "pytest" "$(full_sweep_reason 'pytest -q --maxfail=1')"
 eq "pytest with a file is fine" "" "$(full_sweep_reason 'pytest tests/test_a.py')"
+eq "listing the runner binary is not a sweep" "" "$(full_sweep_reason 'ls node_modules/.bin/vitest')"
+eq "a quoted test path is targeted" "" "$(full_sweep_reason 'npx vitest run "tests/unit/a.test.ts"')"
+eq "npm t with a file is targeted" "" "$(full_sweep_reason 'npm t -- a.test.ts')"
+eq "the runner named in a string is not a run" "" "$(full_sweep_reason 'gh issue create --title "vitest sweeps" --body "npm test is a gate" --label state:ready')"
 eq "pytest with -k is fine" "" "$(full_sweep_reason 'pytest -k login')"
 eq "npm test" "npm test" "$(full_sweep_reason 'npm test')"
 eq "npm run test" "npm test" "$(full_sweep_reason 'npm run test -- --coverage')"
@@ -224,6 +228,10 @@ eq "pr line, no CI" "#47 Docs only (mergeable, no CI yet)" "$(pr_line "$(sed -n 
 eq "log written an hour ago is recent" "yes" "$(log_is_recent 1000000 1003600)"
 eq "log written three hours ago is not" "no" "$(log_is_recent 1000000 1010800)"
 eq "log with a bad time is not" "no" "$(log_is_recent '' 1000000)"
+eq "a low API budget is one line" "GitHub API budget: 312 of 5000 left; resets in 41 minute(s). Poll slowly (30s or more) and run one queue at a time." "$(rate_line "312	5000	3460" 1000)"
+eq "no API budget says so" "GitHub API budget: none left of 5000; resets in 10 minute(s). Do not poll; run the queue with --drain after that." "$(rate_line "0	5000	1600" 1000)"
+eq "a healthy API budget is silent" "" "$(rate_line "4800	5000	1600" 1000)"
+eq "an unknown API budget is silent" "" "$(rate_line '' 1000)"
 eq "newest handoff, ignoring other notes" "/mem/handoff-2026-10-02.md" "$(newest_handoff "$(cat "$fx/handoff-listing.tsv")")"
 eq "no handoff files, nothing" "" "$(newest_handoff "$(printf '1\t/mem/notes.md\n')")"
 eq "handoff head skips front matter" "The batch queue PR is open and waiting on one full run.
@@ -576,6 +584,8 @@ eq "other on main reruns" "yes" "$(needs_rerun 'app' 'other')"
 eq "other on the PR reruns" "yes" "$(needs_rerun 'other' 'docs')"
 eq "ci on main reruns" "yes" "$(needs_rerun 'app' 'ci')"
 eq "main unchanged merges" "no" "$(needs_rerun 'app' '')"
+eq "an unclassified file on the PR merges when main has not moved" "no" "$(needs_rerun 'ci docs other' '')"
+eq "blank main classes count as unmoved" "no" "$(needs_rerun 'other' ' ')"
 
 printf '\n# state_label_from_body\n'
 body="### State
@@ -696,6 +706,14 @@ body
 EOF')"
 eq "tee at the end of a pipe is fine" "" "$(stdin_wait_reason 'make | tee out.log')"
 eq "the word cat in a string is fine" "" "$(stdin_wait_reason 'echo "cat" && ls')"
+eq "a cd chained to a commit waits for nothing" "" "$(stdin_wait_reason 'cd ../wt && git commit -m hi')"
+eq "a short heredoc into a commit is fine" "" "$(stdin_wait_reason 'git -C ../wt commit -F - <<EOF
+one line
+EOF')"
+eq "a heredoc inside a substitution is fine" "" "$(stdin_wait_reason 'gh pr create --body "$(cat <<EOF
+body
+EOF
+)"')"
 
 printf '\n# merging only through the queue\n'
 eq "a direct merge" "gh pr merge" "$(direct_merge_reason 'gh pr merge 41 --squash')"
@@ -728,6 +746,34 @@ eq "red again after its retry needs attention" "44	has conflicts with main
 47	failed CI twice" "$(drain_attention "$open" main '47')"
 eq "drafts and other bases never need attention here" "" "$(drain_attention "43	true	CONFLICTING	red	main
 45	false	CONFLICTING	red	release" main '43 45')"
+
+printf '\n# the API budget and one queue at a time\n'
+eq "plenty left, no wait" "0" "$(rate_wait "4000	2000" 1000)"
+eq "under the floor, wait until the reset" "600" "$(rate_wait "120	1600" 1000)"
+eq "under the floor but the window has reset" "0" "$(rate_wait "120	900" 1000)"
+eq "a custom floor" "0" "$(rate_wait "120	1600" 1000 100)"
+eq "unknown budget, no wait" "0" "$(rate_wait '' 1000)"
+eq "a reset a second away waits one second" "1" "$(rate_wait "0	1001" 1000)"
+eq "a 403 for the rate limit is named" "yes" "$(rate_limit_hit 'HTTP 403: API rate limit exceeded for user ID 1 (https://api.github.com/repos/x/y/actions/runs)')"
+eq "a secondary limit too" "yes" "$(rate_limit_hit 'You have exceeded a secondary rate limit')"
+eq "another error is not" "no" "$(rate_limit_hit 'HTTP 404: Not Found')"
+eq "no error is not" "no" "$(rate_limit_hit '')"
+eq "a running drain refuses a second queue" "a --drain started 12 minute(s) ago is still running (pid 4242)" "$(queue_lock_reason "4242	1000	--drain" 1720 yes)"
+eq "a lock whose process is gone is free" "" "$(queue_lock_reason "4242	1000	--drain" 1720 no)"
+eq "a lock older than three hours is free" "" "$(queue_lock_reason "4242	1000	--batch" 20000 yes)"
+eq "no lock is free" "" "$(queue_lock_reason '' 1720 yes)"
+
+printf '\n# the package a file belongs to\n'
+roots='.
+web
+web/packages/ui
+tools'
+eq "a file in the web app runs from web" "web" "$(nearest_root 'web/src/a.test.ts' "$roots")"
+eq "the deepest package wins" "web/packages/ui" "$(nearest_root 'web/packages/ui/b.test.ts' "$roots")"
+eq "a file outside every package runs from the root" "." "$(nearest_root 'scripts/x.test.ts' "$roots")"
+eq "Windows separators are fine" "web" "$(nearest_root 'web\src\a.test.ts' "$roots")"
+eq "a sibling name is not a prefix" "." "$(nearest_root 'webapp/a.test.ts' "$roots")"
+eq "no root at all, nothing" "" "$(nearest_root 'a.test.ts' 'web')"
 
 printf '\n# numbering\n'
 . "$root/templates/scripts/ci/numbering-lib.sh"

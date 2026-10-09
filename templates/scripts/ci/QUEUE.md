@@ -22,6 +22,18 @@ sh scripts/ci/merge-queue.sh --drain
 
 That is the command for "merge what is ready", so no agent writes its own loop. To keep it going through a working session, run it on a timer: `/loop 20m sh scripts/ci/merge-queue.sh --drain`. A pull request a round could not merge is not tried again in that drain; its line says why. A red pull request gets one retry of its failed jobs. When the drain ends, every pull request that conflicts with main or failed twice is listed under "Needs attention" and the drain exits non-zero, so an agent running it on a timer is woken by the failure instead of reading past a log line.
 
+## Inside the API budget
+
+GitHub allows 5,000 API calls an hour for the account, shared by every tool and every agent. One evening with ten pull requests open, several waits running at once and `gh run watch` polling every few seconds spent it by midnight; from then every wait failed with a 403 that the queue reported as "not green yet", and nothing could land for an hour. The queue now paces itself:
+
+- Every wait polls every thirty seconds, never faster, and the drain's rounds wait two minutes.
+- Before each round and each wait it reads the budget (that call is free) and, when fewer than `QUEUE_RATE_FLOOR` calls are left (default 500), sleeps until the window resets and says so in one line.
+- A 403 for the rate limit is named: "GitHub API rate limit reached; it resets at HH:MM UTC", and the queue stops.
+- One queue at a time. A drain or a batch takes `.scratch/queue/lock`; a second one is refused with a line naming the first. A lock whose process is gone is taken over.
+- The session brief shows the remaining budget when it is low.
+
+Never write a watch loop around the queue, and never run `gh run watch` with its default interval; run `--drain` and let it pace itself. If you must watch one run by hand, `gh run watch ID -i 30`.
+
 ## Only through the queue
 
 A direct `gh pr merge` is refused by the plugin's merge hook in any project that has this script, with one line pointing here. The queue is what checks the folder, waits for a quiet main, batches, cleans up the worktree and records flaky tests; a merge that skips it skips all of that.
@@ -65,6 +77,6 @@ Run the doctor on the machine: `sh scripts/ci/runner-doctor.sh`. It checks the f
 
 ## What the queue needs from the project
 
-- A type-check command. It uses `npx tsc --noEmit` when a `tsconfig.json` is present; set `QUEUE_TYPECHECK_COMMAND` for anything else. With neither, the type-check step is skipped.
-- A one-file test command. By default it runs `scripts/ci/run-test-file.mjs`, which drives the test runner's own API for one file so the hook that refuses sweeps is not in the way. Set `QUEUE_TEST_COMMAND` to another command that takes one file.
+- A type-check command. It uses `npx tsc --noEmit` when any `tsconfig.json` is checked in, run once in each package a change touches (the nearest folder above each changed file with a `tsconfig.json`), so an app in `web/` is checked from `web/`. Set `QUEUE_TYPECHECK_COMMAND` for the project's own command, which runs once from the root. With neither, the type-check step is skipped.
+- A one-file test command. By default it runs `scripts/ci/run-test-file.mjs`, which drives the test runner's own API for one file so the hook that refuses sweeps is not in the way. It runs the file from its own package, the nearest folder above it with a `package.json`, where its `node_modules` and runner config live. Set `QUEUE_TEST_COMMAND` to another command that takes one file. A runner that cannot start is not a red test: the batch stops and prints the runner's error instead of dropping every pull request.
 - Branch protection on main that requires only the `CI passed` check and leaves "require branches to be up to date" off.
