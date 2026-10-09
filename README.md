@@ -1,8 +1,23 @@
-# bitblitzin-bootstrap
+<p align="center">
+  <a href="https://bitblitzin.com/bootstrap"><picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/bootstrap-lockup-on-dark.png">
+    <img src="assets/bootstrap-lockup-on-light.png" alt="Bitblitzin Bootstrap" width="640">
+  </picture></a>
+</p>
 
-<img src="assets/icon.png" alt="" width="72" align="right">
+<p align="center"><strong>House rules for thirty agents.</strong><br>
+A Claude Code plugin for projects where many coding agents work at once.</p>
 
-A Claude Code plugin for projects where many coding agents work at once. It decides one home for each kind of thing, refuses the commands that make agents collide, keeps the board honest, merges in batches, and opens every session with the live state of the project. Built from what went wrong on real projects, one lesson per pull request.
+<p align="center">
+  <a href="https://github.com/Pawper/bitblitzin-bootstrap/releases"><img alt="Version 0.7.0" src="https://img.shields.io/badge/version-0.7.0-110F17?labelColor=110F17&color=FFB347"></a>
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-110F17?labelColor=110F17&color=FF6EC7"></a>
+  <a href="#tests"><img alt="471 tests" src="https://img.shields.io/badge/tests-471%20passed-110F17?labelColor=110F17&color=3FD6FF"></a>
+  <a href="https://bitblitzin.com/bootstrap"><img alt="bitblitzin.com/bootstrap" src="https://img.shields.io/badge/site-bitblitzin.com%2Fbootstrap-110F17?labelColor=110F17&color=A8E36B"></a>
+</p>
+
+Without it, thirty agents behave like thirty new hires with no manager: they write notes in the same file, run the slowest test, merge over each other, and nobody knows the state of the project. The plugin gives the project house rules and the machinery that enforces them, so the rules hold when nobody is watching. It decides one home for each kind of thing, refuses the commands that make agents collide, keeps the board honest, merges in batches, and opens every session with the live state of the project. Every rule came from something that went wrong on a real project, one lesson per pull request.
+
+It is the enforcement layer between an agent orchestrator and the repository: not a cockpit for launching agents, not a spec-writing tool, not a hosted merge queue. It sits alongside those. [Where it fits among them](https://bitblitzin.com/bootstrap#fits) is on the site.
 
 **Install**, inside a Claude Code session:
 
@@ -55,7 +70,7 @@ What never changes: one home per kind of thing, nothing appended to a shared pag
 | Piece | Where | What it does |
 |---|---|---|
 | The skill | `skills/project-bootstrap/SKILL.md` | The design: homes, rules, enforcement, CI from day one, and the outputs in order |
-| The hooks | `hooks/hooks.json`, `hooks/scripts/` | Eight hooks that refuse the dangerous commands, the wasteful dispatches, the slow merge pattern and the loose ends before they run; one that refuses to finish a task in a worktree that is not clean; and one that prints the project's live state at session start |
+| The hooks | `hooks/hooks.json`, `hooks/scripts/` | Ten hooks that refuse the dangerous commands, the wasteful dispatches, the slow merge pattern and the loose ends before they run; one that refuses to finish a task in a worktree that is not clean; and one that prints the project's live state at session start |
 | The templates | `templates/` | Issue template, CLAUDE.md and AGENTS.md, setup and notice skeletons, the status page and its scripts, the CI workflow, the merge queue, the board setup, the nightly audit |
 | The owner console | `console/`, sample in `templates/console/` | One page: what the project talks to, the state of each system, how to do the routine things |
 | The status skill | `skills/project-status/SKILL.md`, `scripts/board/`, `workflows/board-digest.js` | Where every open issue and pull request really stands, from bodies and comments, read by light subagents and only when an item changed |
@@ -119,7 +134,7 @@ Then switch on the board's built-in workflows by hand, as described below, and l
 
 This is what a person does with the plugin, from install to the first feature agent, and what runs on its own after that.
 
-1. **Install.** In a Claude Code session, add the marketplace and install the plugin with the two commands above. Pick project scope so every collaborator gets the hooks. From this moment the six hooks are live: deletes, forced pushes, full test sweeps, direct edits to generated pages, issues without a State label, and agent dispatches without a fitting model are refused with one sentence each.
+1. **Install.** In a Claude Code session, add the marketplace and install the plugin with the two commands above. Pick project scope so every collaborator gets the hooks. From this moment the ten hooks are live: deletes, forced pushes, full test sweeps, direct edits to generated pages, issues without a State label, agent dispatches without a fitting model, merges around the queue, the serial merge pattern, pull requests closed without a reason and detached worktrees, and a shared build daemon stopped on a machine that hosts a runner are refused with one sentence each.
 2. **Run the skill.** In a new or struggling repository, say `/project-bootstrap set this project up for many agents`. The skill looks at the repository first, then asks a short survey for what it could not tell: new or existing project, where issues and CI live, which agent runtimes, the one-file test command, which pages are generated, the spec tool, runners, and where the work folder goes. It records the answers under a Stack heading in CLAUDE.md, walks the homes table, writes the rules into CLAUDE.md and AGENTS.md, and copies the templates in, adapted to the answers. Replace every capitalized placeholder that is left.
 3. **Create the board and labels.** Run `sh scripts/board.sh OWNER OWNER/REPO`. It creates the seven state labels, the project board, its State field with the seven values, and links the repository.
 4. **Two settings GitHub cannot script.** In the board's Workflows tab, switch on the four built-in workflows listed under The project board. In branch protection on main, require exactly one check, `CI passed`, and leave "require branches to be up to date" off, as described under Branch protection on main.
@@ -391,7 +406,7 @@ ok    no overlap merges
 ok    overlap reruns
 ok    ci on main reruns
 
-412 passed, 0 failed
+471 passed, 0 failed
 ```
 
 ## License, privacy and terms
