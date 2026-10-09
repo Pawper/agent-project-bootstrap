@@ -163,6 +163,22 @@ log_is_recent() {
   if [ $(( $2 - $1 )) -le "$lr_window" ] && [ "$1" -le "$2" ]; then echo yes; else echo no; fi
 }
 
+# rate_line RATE NOW [FLOOR]
+# RATE is "remaining<TAB>limit<TAB>reset_epoch" from gh api rate_limit.
+# Print one line when the budget is low, under FLOOR (default 1000) calls,
+# so the queue and the drive know not to poll; print nothing when it is fine
+# or unknown. The rate_limit endpoint itself is free, so the brief may read it.
+rate_line() {
+  printf '%s\n' "$1" | tr -d '\r' | awk -F'\t' -v now="$2" -v floor="${3:-1000}" '
+    NR == 1 && NF >= 3 && $1 != "" {
+      rem = $1 + 0; lim = $2 + 0; reset = $3 + 0
+      if (rem >= floor) exit
+      mins = int((reset - now + 59) / 60); if (mins < 0) mins = 0
+      if (rem == 0) printf "GitHub API budget: none left of %d; resets in %d minute(s). Do not poll; run the queue with --drain after that.\n", lim, mins
+      else printf "GitHub API budget: %d of %d left; resets in %d minute(s). Poll slowly (30s or more) and run one queue at a time.\n", rem, lim, mins
+    }'
+}
+
 # newest_handoff LIST
 # LIST is one file per line as "mtime<TAB>path". Print the path of the
 # newest file whose name starts with "handoff-", or nothing.

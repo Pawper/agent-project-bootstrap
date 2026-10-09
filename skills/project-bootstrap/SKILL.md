@@ -72,7 +72,7 @@ Write these into the project's CLAUDE.md (and AGENTS.md as a copy for other tool
 ## 2. Rules for every agent
 
 - File the issue first, with a State. Work in an isolated worktree. Never force-push. Never delete; move aside.
-- A PR carries its feature's spec change and a setup line when a setup step changes, and nothing appended to a shared page.
+- Nothing is appended to a shared page. A PR names its spec in its body (`Spec: specs/<feature>`) and changes the spec only when the design changed; it changes the manual only when a person must do a setup step; it changes a feature's status stub only when that feature's state changes; it adds no task to any file, because tasks are issues. A spec tool's tasks.md is written once at planning, each task becomes an issue, and the file is not touched again.
 - Tests prove the change and run per file; the full suite is the gate on main, not on the PR.
 - Everything a person sees is calm and plain, never a developer note (no issue numbers, fields, migrations).
 - Report what was not done and why, not only what was. Say which commands were refused.

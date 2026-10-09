@@ -58,8 +58,13 @@ if [ -z "$mode" ]; then
   mode=serial
 fi
 
+# The type-check runs once per package a change touches: the nearest
+# folder above each changed file with a tsconfig.json, so a project whose
+# app lives in web/ is checked from web/. QUEUE_TYPECHECK_COMMAND, when
+# set, runs once from the root as the project's own command.
 typecheck=${QUEUE_TYPECHECK_COMMAND:-}
-if [ -z "$typecheck" ] && [ -f tsconfig.json ]; then typecheck="npx tsc --noEmit"; fi
+ts_roots=$(git ls-files -- tsconfig.json '*/tsconfig.json' 2>/dev/null | sed 's#/tsconfig\.json$##; s#^tsconfig\.json$#.#')
+if [ -z "$typecheck" ] && [ -n "$ts_roots" ]; then typecheck="npx tsc --noEmit"; fi
 test_one=${QUEUE_TEST_COMMAND:-"node $here/run-test-file.mjs"}
 
 [ -f "$here/../worktrees-lib.sh" ] && . "$here/../worktrees-lib.sh"
@@ -72,13 +77,64 @@ wait_minutes=${QUEUE_WAIT_MINUTES:-60}
 flaky_dir=.scratch/queue
 mkdir -p "$flaky_dir" 2>/dev/null || true
 
+# Staying inside GitHub's API budget (5,000 calls an hour, shared by every
+# tool and agent on the account). Ten pull requests, several waits at once
+# and a fast watch loop spent it in an evening; after that every wait
+# failed with a 403 that read as "not green yet". So: waits poll every
+# thirty seconds and never faster; before a round or a wait the queue reads
+# the budget (that call is free) and sleeps until the reset when fewer
+# than QUEUE_RATE_FLOOR calls are left; a 403 is named as the rate limit
+# and stops the queue; and only one queue runs at a time.
+gh_err=$flaky_dir/gh.err
+hhmm() { date -u -d "@$1" +%H:%M 2>/dev/null || date -u -r "$1" +%H:%M 2>/dev/null || echo "$1"; }
+rate_budget() { gh api rate_limit --jq '.resources.core | "\(.remaining)\t\(.reset)"' 2>/dev/null || true; }
+rate_guard() {
+  rg=$(rate_budget)
+  w=$(rate_wait "$rg" "$(date +%s)" "${QUEUE_RATE_FLOOR:-500}")
+  [ "$w" -gt 0 ] || return 0
+  echo "GitHub API budget is low (${rg%%	*} calls left); waiting $((w / 60 + 1)) minute(s) until it resets at $(hhmm "${rg#*	}") UTC."
+  sleep "$w"
+}
+# rate_stop: after a gh call whose stderr went to $gh_err, stop plainly
+# when GitHub refused it for the rate limit.
+rate_stop() {
+  [ "$(rate_limit_hit "$(cat "$gh_err" 2>/dev/null)")" = yes ] || return 0
+  rg=$(rate_budget)
+  echo "GitHub API rate limit reached; it resets at $(hhmm "${rg#*	}") UTC. Stopping; run the queue again after that, and never watch a run in a loop of your own."
+  exit 1
+}
+
+# One queue at a time. A queue takes .scratch/queue/lock and a second one
+# is refused with a line naming the first, so agents do not start parallel
+# waits that spend the same budget twice. The batch or serial run a drain
+# starts itself is inside the drain's lock. A lock whose process is gone,
+# or older than three hours, is a crash's leftover and is taken over.
+lock_file=$flaky_dir/lock
+have_lock=no
+unlock() { [ "$have_lock" = yes ] && : > "$lock_file"; have_lock=no; }
+take_lock() {
+  [ -z "$QUEUE_LOCKED" ] || return 0
+  l=$(cat "$lock_file" 2>/dev/null || true)
+  lpid=${l%%	*}
+  alive=no; [ -n "$lpid" ] && kill -0 "$lpid" 2>/dev/null && alive=yes
+  why=$(queue_lock_reason "$l" "$(date +%s)" "$alive")
+  if [ -n "$why" ]; then
+    echo "Another queue is running: $why. Wait for it to finish rather than starting a second one."
+    exit 1
+  fi
+  printf '%s\t%s\t%s\n' "$$" "$(date +%s)" "--$mode" > "$lock_file"
+  have_lock=yes
+  QUEUE_LOCKED=1; export QUEUE_LOCKED
+  trap unlock EXIT
+}
+
 iso_epoch() { # ISO 8601 -> epoch seconds, GNU or BSD date
   [ -n "$1" ] || { echo 0; return; }
   date -u -d "$1" +%s 2>/dev/null || date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$1" +%s 2>/dev/null || echo 0
 }
 
 latest_run() { # BRANCH -> "id<TAB>status<TAB>conclusion"
-  gh run list --branch "$1" --limit 1 --json databaseId,status,conclusion --jq '.[0] | "\(.databaseId)\t\(.status)\t\(.conclusion // "")"' 2>/dev/null
+  gh run list --branch "$1" --limit 1 --json databaseId,status,conclusion --jq '.[0] | "\(.databaseId)\t\(.status)\t\(.conclusion // "")"' 2>"$gh_err" || true
 }
 
 jobs_of() { # RUN_ID -> one job per line for run_verdict
@@ -151,7 +207,9 @@ record_flaky() {
 wait_for_run() {
   w_start=$(date +%s); outage_on=no
   while :; do
+    rate_guard
     run=$(latest_run "$2"); run_id=${run%%	*}
+    rate_stop
     [ -n "$run_id" ] || { echo "No run found for $2 yet."; sleep 30; continue; }
     msg=$(diagnose "$run_id"); code=$?
     [ -n "$msg" ] && echo "$msg"
@@ -243,9 +301,11 @@ serial_one() {
   merge_base=$(git merge-base "origin/$base" "$head")
   pr_classes=$(classify_paths "$(git diff --name-only "$merge_base" "$head")" "$rules")
   main_classes=$(classify_paths "$(git diff --name-only "$merge_base" "origin/$base")" "$rules")
-  if ! gh pr checks "$pr" >/dev/null 2>&1; then
+  if ! gh pr checks "$pr" >/dev/null 2>"$gh_err"; then
+    rate_stop
     hb=$(gh pr view "$pr" --json headRefName -q .headRefName 2>/dev/null || true)
     run=$(latest_run "$hb"); run_id=${run%%	*}
+    rate_stop
     why="not green yet, nothing merged"
     if [ -n "$run_id" ]; then
       msg=$(diagnose "$run_id"); code=$?
@@ -258,7 +318,7 @@ serial_one() {
     batch_line "$pr" "waiting" "$why"
     return 0
   fi
-  if [ "$(needs_rerun "$pr_classes" "$main_classes")" = yes ]; then
+  if [ "$(needs_rerun "$pr_classes" "$main_classes" "$(rerun_free_classes "$rules")")" = yes ]; then
     gh pr update-branch "$pr" >/dev/null
     sync_worktree "$(gh pr view "$pr" --json headRefName -q .headRefName 2>/dev/null || true)"
     batch_line "$pr" "updated" "main moved in its classes (PR: ${pr_classes:-none}; main: ${main_classes:-none}), CI runs again"
@@ -270,6 +330,20 @@ serial_one() {
   gh pr merge "$pr" --squash >/dev/null
   batch_line "$pr" "merged serially" "main moved only outside its classes"
   tidy_worktree "$head_branch"
+}
+
+# typecheck_ok PATHS: the type-check, run once in each package the change
+# touches (the nearest folder above each changed file with a tsconfig.json),
+# or once from the root when QUEUE_TYPECHECK_COMMAND names the project's
+# own command. Returns non-zero on the first red package.
+typecheck_ok() {
+  if [ -n "$QUEUE_TYPECHECK_COMMAND" ] || [ -z "$ts_roots" ]; then sh -c "$typecheck" >/dev/null 2>&1; return $?; fi
+  tc_dirs=$(printf '%s\n' "$1" | while IFS= read -r tc_f; do [ -n "$tc_f" ] && nearest_root "$tc_f" "$ts_roots"; done | sort -u)
+  for tc_d in $tc_dirs; do
+    [ -f "$tc_d/tsconfig.json" ] || continue
+    (cd "$tc_d" && sh -c "$typecheck") >/dev/null 2>&1 || return 1
+  done
+  return 0
 }
 
 # tidy_worktree BRANCH: remove the worktree of a branch that just merged,
@@ -285,12 +359,14 @@ tidy_worktree() {
 # for the running ones. It stops when nothing is green and nothing is
 # running, when nothing new turned green, after --rounds rounds (default
 # six), or after QUEUE_DRAIN_MINUTES (default ninety).
+take_lock
 if [ "$mode" = drain ]; then
   rounds=${rounds:-6}
   drain_minutes=${QUEUE_DRAIN_MINUTES:-90}
   d_start=$(date +%s); round=0; tried=""; retried=""; attention=""
   while [ "$round" -lt "$rounds" ]; do
     round=$((round + 1))
+    rate_guard
     open=$(gh pr list --state open --limit 100 --json number,isDraft,mergeable,statusCheckRollup,baseRefName --jq '
       .[] | [ .number, .isDraft, .mergeable,
         ( [ .statusCheckRollup[]? | (.conclusion // .state // "") ] as $s
@@ -298,7 +374,8 @@ if [ "$mode" = drain ]; then
             elif any($s[]; test("FAILURE|ERROR|TIMED_OUT|CANCELLED|ACTION_REQUIRED")) then "red"
             elif any($s[]; . == "" or test("PENDING|EXPECTED|QUEUED|IN_PROGRESS")) then "pending"
             else "green" end ),
-        .baseRefName ] | @tsv' 2>/dev/null)
+        .baseRefName ] | @tsv' 2>"$gh_err" || true)
+    rate_stop
     # A red pull request gets one retry of its failed jobs; a second red,
     # or a conflict, is collected and named when the drain ends.
     for r in $(drain_retry "$open" "$base" "$retried"); do
@@ -378,16 +455,31 @@ for pr in $prs; do
     dropped="$dropped $pr"
     continue
   fi
-  if [ -n "$typecheck" ] && ! sh -c "$typecheck" >/dev/null 2>&1; then
+  changed=$(git diff --name-only "origin/$base...$head")
+  if [ -n "$typecheck" ] && ! typecheck_ok "$changed"; then
     git reset -q --hard "$good"
     batch_line "$pr" "dropped" "the type-check went red after merging it"
     dropped="$dropped $pr"
     continue
   fi
   red=""
-  for f in $(tests_for_diff "$(git diff --name-only "origin/$base...$head")"); do
+  for f in $(tests_for_diff "$changed"); do
     [ -f "$f" ] || continue
-    if ! $test_one "$f" >/dev/null 2>&1; then red=$f; break; fi
+    rc=0; $test_one "$f" >/dev/null 2>"$flaky_dir/test.err" || rc=$?
+    if [ "$rc" -eq 2 ]; then
+      # The runner could not start. That is not a red test, and dropping
+      # every pull request for it would empty the batch for nothing.
+      echo "The test runner could not run $f: $(tail -n 3 "$flaky_dir/test.err" 2>/dev/null | tr '\r\n' '  ')"
+      echo "Nothing was dropped for it. Fix the runner, or set QUEUE_TEST_COMMAND to the project's one-file test command, and run the batch again."
+      git reset -q --hard "$good"
+      git checkout -q - 2>/dev/null || true
+      exit 1
+    fi
+    if [ "$rc" -ne 0 ]; then
+      red=$f
+      [ -s "$flaky_dir/test.err" ] && echo "  $(tail -n 3 "$flaky_dir/test.err" | tr '\r\n' '  ')"
+      break
+    fi
   done
   if [ -n "$red" ]; then
     git reset -q --hard "$good"

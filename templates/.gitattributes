@@ -8,13 +8,12 @@
 *.ico binary
 *.pdf binary
 
-# Append-only lists: every pull request adds a line at the end, so two of
-# them always conflict there and never mean to. A union merge keeps both
-# sides' lines. It applies to merges git does locally, which includes the
-# merge queue's batch branch; GitHub's own conflict check ignores it, so a
-# pull request can still show the conflict on the website while the queue
-# merges it cleanly. Use it only for files where the order of new lines
-# does not matter; the numbering check still catches a task added with a
-# running number.
-tasks.md merge=union
+# A generated append-only list, where every release adds a line at the end
+# and two of them conflict there without meaning to: a union merge keeps
+# both sides' lines. It applies to merges git does locally, which includes
+# the merge queue's batch branch; GitHub's own conflict check ignores it.
+# Use it only for a file a tool writes. Never give it to a page agents
+# edit by hand (a tasks file, a spec, the manual): the conflict is the one
+# signal that two pull requests are appending to a shared page, and hiding
+# it is how one project reached 64 appends to one file in a week.
 CHANGELOG.md merge=union

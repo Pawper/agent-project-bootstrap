@@ -99,3 +99,60 @@ drain_attention() {
       else if ($4 == "red" && index(tried, " " $1 " ") > 0) printf "%s\tfailed CI twice\n", $1
     }' | sort -n
 }
+
+# rate_wait RATE NOW [FLOOR]
+# RATE is "remaining<TAB>reset_epoch" as gh api rate_limit reports it for
+# the core API. Print the seconds the queue should wait before spending
+# more calls: 0 when more than FLOOR (default 500) calls are left, when the
+# window has already reset, or when RATE is empty (the budget could not be
+# read, and the queue goes on rather than stall); otherwise the seconds
+# until the reset, at least one.
+rate_wait() {
+  printf '%s\n' "$1" | tr -d '\r' | awk -F'\t' -v now="$2" -v floor="${3:-500}" '
+    NR == 1 {
+      rem = $1 + 0; reset = $2 + 0
+      if ($1 == "" || rem > floor || reset <= now) { print 0; exit }
+      w = reset - now; if (w < 1) w = 1; print w; exit
+    }
+    END { if (NR == 0) print 0 }'
+}
+
+# rate_limit_hit TEXT
+# Print "yes" when TEXT, the error output of a gh call, says GitHub's API
+# rate limit was exceeded, "no" otherwise.
+rate_limit_hit() {
+  case $(printf '%s' "$1" | tr 'A-Z' 'a-z') in
+    *"rate limit exceeded"*|*"api rate limit"*|*"secondary rate limit"*) echo yes ;;
+    *) echo no ;;
+  esac
+}
+
+# queue_lock_reason LOCK NOW ALIVE [STALE_SECONDS]
+# LOCK is the text of the queue's lock file: "pid<TAB>started_epoch<TAB>mode".
+# ALIVE is yes when that pid is still running. Print why a second queue must
+# not start ("a --drain started 12 minutes ago is still running (pid 4242)"),
+# or nothing when LOCK is empty, its process is gone, or it is older than
+# STALE_SECONDS (default three hours), which is a lock a crash left behind.
+queue_lock_reason() {
+  printf '%s\n' "$1" | tr -d '\r' | awk -F'\t' -v now="$2" -v alive="$3" -v stale="${4:-10800}" '
+    NR == 1 && NF >= 3 && $1 != "" {
+      age = now - ($2 + 0)
+      if (alive != "yes" || age > stale) exit
+      printf "a %s started %d minute(s) ago is still running (pid %s)\n", $3, int(age / 60), $1
+      exit
+    }'
+}
+
+# nearest_root FILE ROOTS
+# ROOTS is one folder per line, each holding a package.json or tsconfig.json
+# ("." for the repository root). Print the deepest root that contains FILE,
+# so a test in web/src/a.test.ts runs from web/ when web/package.json exists,
+# and from "." otherwise. Print nothing when no root contains it.
+nearest_root() {
+  nr_f=$(printf '%s' "$1" | tr '\\' '/')
+  printf '%s\n' "$2" | tr -d '\r' | tr '\\' '/' | awk -v f="$nr_f" '
+    { r = $0; sub(/\/$/, "", r); if (r == "" ) next
+      if (r == ".") { if (length(best) == 0 && !seen) { best = "."; seen = 1 }; next }
+      if (substr(f, 1, length(r) + 1) == r "/" && length(r) > length(best)) { best = r; seen = 1 } }
+    END { if (seen) print best }'
+}

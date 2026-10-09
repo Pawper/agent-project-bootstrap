@@ -69,8 +69,10 @@ jobs:
         run: echo "replace with the link and spelling checks"
 
   spec-check:
-    # A change to src/ must come with a change to its feature's spec folder.
-    # Each feature has its own folder, so this adds no shared file.
+    # A change to src/ belongs to a spec: the pull request names it in its
+    # body ("Spec: specs/<feature>") or, when the design changed, changes
+    # the feature's folder. Naming is the normal case; a touch requirement
+    # alone made every pull request append to spec.md.
     needs: classify
     if: github.event_name == 'pull_request' && (contains(needs.classify.outputs.classes, 'app') || contains(needs.classify.outputs.classes, 'other'))
     runs-on: ubuntu-latest
@@ -78,7 +80,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Fail when src/ changed without its spec
+      - name: Fail when src/ changed without naming or changing its spec
+        env:
+          SPEC_TEXT: |
+            ${{ github.event.pull_request.title }}
+            ${{ github.event.pull_request.body }}
         run: sh scripts/ci/spec-check.sh "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}"
 
   setup-check:

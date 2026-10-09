@@ -123,6 +123,14 @@ if has queue && [ -n "$queue_glob" ]; then
   fi
 fi
 
+# API budget, only when it is low. Reading rate_limit does not count
+# against it, so this adds nothing to the budget the brief spends.
+if has queue && command -v gh >/dev/null 2>&1; then
+  rl=$(run_bounded 5 gh api rate_limit --jq '.resources.core | "\(.remaining)\t\(.limit)\t\(.reset)"' 2>/dev/null || true)
+  rl_line=$(rate_line "$rl" "$(date +%s)")
+  [ -n "$rl_line" ] && add "$rl_line"
+fi
+
 # Leftover work and worktrees: local git only, one call each.
 if has leftover && [ "$have_git" = yes ]; then
   default=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || echo main)

@@ -1,8 +1,11 @@
 #!/bin/sh
-# Fail when a change touches src/ without a change in its feature's spec
-# folder. Warn when it touches more than one spec folder.
-# Usage: git diff --name-only BASE HEAD | sh scripts/ci/spec-check.sh
-#    or: sh scripts/ci/spec-check.sh BASE HEAD
+# Fail when a change touches src/ without belonging to a spec: the pull
+# request names its spec ("Spec: specs/<feature>" in the body, read from
+# SPEC_TEXT) or changes a feature folder under specs/. Warn when it touches
+# more than one spec folder. The spec is written before building; a pull
+# request names it, and touches it only when the design changes.
+# Usage: git diff --name-only BASE HEAD | SPEC_TEXT="..." sh scripts/ci/spec-check.sh
+#    or: SPEC_TEXT="..." sh scripts/ci/spec-check.sh BASE HEAD
 here=$(dirname "$0")
 . "$here/lib.sh"
 
@@ -12,9 +15,9 @@ else
   paths=$(cat)
 fi
 
-case "$(spec_check_reason "$paths")" in
+case "$(spec_check_reason "$paths" "${SPEC_TEXT:-}")" in
   missing)
-    echo "This change touches src/ but no spec folder under specs/; add or update specs/<feature>/spec.md in the same PR (the constitution does not count)." >&2
+    echo "This change touches src/ but belongs to no spec. Name it in the pull request body, \"Spec: specs/<feature>\", or, when the design changed, change specs/<feature>/spec.md in the same PR. Do not add a line to a spec just to pass; the constitution does not count." >&2
     exit 1
     ;;
   many*)

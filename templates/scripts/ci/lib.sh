@@ -5,7 +5,8 @@
 # classify_paths PATHS RULES
 # PATHS is one path per line. RULES is the text of classes.txt. Print the
 # matching classes, sorted, space separated. A path that matches no rule is
-# class "other".
+# class "other". A line starting with "!" is a directive, not a class
+# (see rerun_free_classes), and is skipped here.
 classify_paths() {
   cp_rules=$2
   set -f
@@ -16,6 +17,7 @@ classify_paths() {
       cp_line=${cp_line%%#*}
       set -- $cp_line
       [ $# -ge 2 ] || continue
+      case "$1" in '!'*) continue ;; esac
       cp_c=$1
       shift
       for cp_pat in "$@"; do
@@ -30,18 +32,39 @@ EOF
   set +f
 }
 
-# needs_rerun PR_CLASSES MAIN_CLASSES
+# rerun_free_classes RULES
+# Print the classes named on a "!rerun-free" line of classes.txt: the ones
+# whose moves on main can never make a green pull request red (specs,
+# docs, the status page), so the queue ignores them when deciding on a
+# re-run. Print nothing when there is no such line.
+rerun_free_classes() {
+  printf '%s\n' "$1" | tr -d '\r' | awk '
+    { sub(/#.*/, "") }
+    $1 == "!rerun-free" { $1 = ""; sub(/^[ \t]+/, ""); print; exit }'
+}
+
+# needs_rerun PR_CLASSES MAIN_CLASSES [FREE_CLASSES]
 # Print "yes" when a green PR must run CI again before merging because main
 # moved in a class the PR touches, in the ci class, or in an unclassified
-# file. Print "no" when main moved only outside the PR's classes.
+# file. Print "no" when main moved only outside the PR's classes, only in
+# FREE_CLASSES (the rerun-free ones), or has not moved at all since the
+# merge base: then nothing the PR touches, classified or not, needs a
+# second run. Ten pull requests that each touch a spec would otherwise
+# invalidate one another on every merge and go round CI one at a time.
 needs_rerun() {
+  nr_main=""
+  for nr_m in $2; do
+    case " $3 " in *" $nr_m "*) continue ;; esac
+    nr_main="$nr_main $nr_m"
+  done
+  [ -n "$(printf '%s' "$nr_main" | tr -d ' \t')" ] || { echo no; return 0; }
   for nr_a in $1; do
-    for nr_b in $2; do
+    for nr_b in $nr_main; do
       [ "$nr_a" = "$nr_b" ] && { echo yes; return 0; }
     done
   done
-  case " $1 $2 " in *" other "*) echo yes; return 0 ;; esac
-  case " $2 " in *" ci "*) echo yes; return 0 ;; esac
+  case " $1 $nr_main " in *" other "*) echo yes; return 0 ;; esac
+  case " $nr_main " in *" ci "*) echo yes; return 0 ;; esac
   echo no
 }
 
@@ -63,12 +86,18 @@ state_label_from_body() {
   '
 }
 
-# spec_check_reason PATHS
-# PATHS is one changed path per line. Print "missing" when the change
-# touches src/ but no feature spec folder under specs/ (the constitution
-# does not count). Print "many N" when it touches N feature spec folders and
-# N is more than one, which is a warning, not a failure. Print nothing when
-# the change is fine or touches no source.
+# spec_check_reason PATHS [TEXT]
+# PATHS is one changed path per line; TEXT is the pull request's title and
+# body. A source change must belong to a spec: either TEXT names one
+# ("Spec: specs/<feature>" or any "specs/<feature>/" mention) or the change
+# touches a feature folder under specs/. The spec is written before
+# building, so naming it is the normal case; touching it is for a change
+# that changes the design. A touch requirement alone made every pull
+# request append a line to spec.md to pass, which is the shared-page
+# append the rules forbid. Print "missing" when the change touches src/
+# and does neither (the constitution does not count). Print "many N" when
+# it touches N feature folders and N is more than one, a warning. Print
+# nothing when the change is fine or touches no source.
 spec_check_reason() {
   sc_src=0
   sc_folders=$(printf '%s\n' "$1" | tr -d '\r' | tr '\\' '/' | awk '
@@ -82,7 +111,12 @@ spec_check_reason() {
   sc_src=${sc_folders%% *}
   sc_n=${sc_folders#* }
   [ "$sc_src" = 1 ] || return 0
-  if [ "$sc_n" -eq 0 ]; then
+  sc_named=$(printf '%s\n' "$2" | tr -d '\r' | awk '
+    tolower($0) ~ /(^|[^a-z])spec:[ \t]*[a-z0-9_.\/-]/ { print "named"; exit }
+    /specs\/[A-Za-z0-9_.-]+\// { print "named"; exit }')
+  if [ "$sc_n" -eq 0 ] && [ "$sc_named" = named ]; then
+    return 0
+  elif [ "$sc_n" -eq 0 ]; then
     echo missing
   elif [ "$sc_n" -gt 1 ]; then
     echo "many $sc_n"
