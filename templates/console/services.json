@@ -6,13 +6,13 @@
     { "id": "admin", "name": "Admin" }
   ],
   "todo": [
-    { "id": "database", "title": "Connect the database", "how": "Create the Supabase project and put its database address in the environment.", "link": "SETUP.md", "done_when": { "system": "database" } },
+    { "id": "database", "title": "Connect the database", "how": "Run sh scripts/supabase-create.sh NAME; it creates the project and writes the password only to .env. Then set the database address from the project's connection string.", "link": "SETUP.md", "done_when": { "system": "database" } },
     { "id": "storage", "title": "Connect file storage", "how": "Create the storage bucket in Supabase and set its name and keys.", "link": "SETUP.md", "done_when": { "system": "storage" } },
     { "id": "email", "title": "Connect email sending", "how": "Verify the sending domain and set the key.", "link": "SETUP.md", "done_when": { "system": "email" } },
     { "id": "runners", "title": "Set up the self-hosted runners", "how": "Install at least two runners as services with add-runner.ps1, run the doctor and the Runner check workflow, then set the done flag.", "link": "scripts/ci/RUNNERS.md", "done_when": { "flag": "DONE_RUNNERS" } },
     { "id": "signing-key", "title": "Set the session signing key", "how": "Copy the JWT secret from the Supabase project's settings into the environment.", "link": "SETUP.md", "done_when": { "settings": ["SESSION_SIGNING_KEY"] } },
     { "id": "backup", "title": "Schedule the backup", "how": "Turn on the nightly dump to the backup bucket and set the done flag once the first one has run.", "link": "SETUP.md", "done_when": { "flag": "DONE_BACKUP" } },
-    { "id": "branch-protection", "title": "Set branch protection on main", "how": "Require only the CI passed check, leave up to date off, require a pull request, then set the done flag.", "link": "CLAUDE.md", "done_when": { "flag": "DONE_BRANCH_PROTECTION" } }
+    { "id": "branch-protection", "title": "Set branch protection on main", "how": "Run sh scripts/protect-main.sh, which sets the only check (CI passed), up to date off and a pull request required, then set the done flag.", "link": "CLAUDE.md", "done_when": { "flag": "DONE_BRANCH_PROTECTION" } }
   ],
   "systems": [
     {

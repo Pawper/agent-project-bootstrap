@@ -3,22 +3,33 @@
 # it once for each runner you want: two is the recommended minimum, since a
 # single runner makes every job wait for the last.
 #
-# Usage, from an elevated PowerShell in the project folder:
+# Usage, from an elevated PowerShell in the project folder (it refuses to
+# run unelevated, because installing a service needs it):
 #   powershell -ExecutionPolicy Bypass -File scripts\ci\add-runner.ps1 -Name build-2
+# An agent can launch the elevated shell and the owner clicks the prompt:
+#   Start-Process powershell -Verb RunAs -Wait -ArgumentList '-ExecutionPolicy Bypass -File scripts\ci\add-runner.ps1 -Name build-2'
 #
 # It asks gh for a registration token (you must be signed in with gh and
 # have admin rights on the repository), downloads the current runner into
-# C:\actions-runner\<Name>, configures it with the labels the workflows
-# expect, and starts the service. It changes nothing else on the machine.
-# Afterwards, run scripts/ci/runner-doctor.sh and the Runner check workflow.
+# C:\actions-runner-<repo>\<Name> (one root per repository, so a second
+# project's runner never lands inside the first's; -Root overrides it),
+# configures it with the labels the workflows expect, and starts the
+# service. It changes nothing else on the machine. Afterwards, run
+# scripts/ci/runner-doctor.sh and the Runner check workflow.
 param(
   [Parameter(Mandatory = $true)][string]$Name,
   [string]$Labels = "self-hosted,windows,x64",
-  [string]$Root = "C:\actions-runner"
+  [string]$Root = ""
 )
 $ErrorActionPreference = "Stop"
 
+$principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+  throw "Run this from an elevated PowerShell; installing a service needs it. From any shell: Start-Process powershell -Verb RunAs -Wait -ArgumentList '-ExecutionPolicy Bypass -File scripts\ci\add-runner.ps1 -Name $Name'"
+}
+
 $repo = (gh repo view --json nameWithOwner --jq .nameWithOwner).Trim()
+if (-not $Root) { $Root = "C:\actions-runner-" + ($repo -split "/")[1] }
 $token = (gh api -X POST "repos/$repo/actions/runners/registration-token" --jq .token).Trim()
 $release = gh api repos/actions/runner/releases/latest | ConvertFrom-Json
 $asset = $release.assets | Where-Object { $_.name -like "actions-runner-win-x64-*.zip" } | Select-Object -First 1

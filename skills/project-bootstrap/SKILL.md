@@ -138,6 +138,13 @@ mechanical check: "report what was not done" and "stop every shell." Say so in C
   issue after its second flake instead of re-running it again.
 - A self-hosted runner gets the doctor run on it and the runner check workflow run once before its first real
   run, so the wrong bash, a missing tool on the service's PATH and the execution policy are found first.
+  `add-runner.ps1` needs an elevated PowerShell (the agent launches it with `Start-Process -Verb RunAs -Wait`
+  and the owner clicks the prompt) and installs under `C:\actions-runner-<repo>`. On a Windows runner the
+  `RUN_SHELL` placeholder in `ci.yml` and `queue-drain.yml` is Git's bash by its short path, because the
+  service account's `bash` and `sh` are the WSL stub; a PowerShell step says `shell: powershell`, not `pwsh`.
+- Main that goes green closes its own `ci-red` issue; the `report-green` job comments and closes it.
+- The Supabase project is one approved command, `sh scripts/supabase-create.sh NAME`, which writes the password
+  only to `.env`; it belongs on the launch to-do, not in a by-hand step.
 
 ## 5. The project board, exactly
 
@@ -156,7 +163,7 @@ Create, in order:
 1. The repository with CLAUDE.md and AGENTS.md from sections 1 and 2, short, pointing at the hooks and checks.
 2. The issue template with the State field; the project board set up exactly as section 5 says; the labels.
 3. The hooks, which the plugin provides: block delete, force-push, full sweeps, direct writes to generated pages, issue creation without a state label, agent dispatch without a fitting model, the serial merge of more than two PRs without a named mode, a pull request closed without a comment, a detached worktree; and the stop hook that refuses to finish a task in a worktree that is not clean. Also the project's `.gitignore`, with the scratch folder and the generated files that make a clean folder look dirty.
-4. The CI skeleton from section 4: the classifier, the per-class jobs, the `CI passed` summary, the status-page, spec, setup-line and line-endings checks, the full run on main, the merge queue, the nightly audit. Then branch protection by hand.
+4. The CI skeleton from section 4: the classifier, the per-class jobs, the `CI passed` summary, the status-page, spec, setup-line and line-endings checks, the full run on main, the merge queue, the nightly audit. Then branch protection with `sh scripts/protect-main.sh`.
 5. The setup document, the notice file, the one-screen status page and its build and check scripts.
 6. The work folder outside the repo, with a register for research and an off-site backup scheduled.
 7. The constitution, then the first spec.
@@ -236,5 +243,7 @@ are ready to copy from `${CLAUDE_PLUGIN_ROOT}/templates/`:
 - Step 10: `.claude/project-drive.json`; the skill and its scripts come from the plugin; the drive issue is filed with `gh issue create --title Drive --label drive,state:parked`
 
 Copy them into the new repository, replace every CAPITALIZED placeholder, run `sh scripts/board.sh OWNER OWNER/REPO`,
-switch on the board's built-in workflows and set branch protection by hand, and build the status page once with
-`sh status/build.sh`. When the project is not on GitHub, say so, use section 0, and keep the pure parts of the scripts.
+run `sh scripts/protect-main.sh` for branch protection, switch on the board's built-in workflows by hand (the one
+setting with no API), and build the status page once with `sh status/build.sh`. Adapt a copied template with `sed`
+or a short script, never by rewriting the whole file: the Write tool refuses to overwrite a file it has not read,
+and a rewrite loses the template's own comments, which are the reasons for its lines. When the project is not on GitHub, say so, use section 0, and keep the pure parts of the scripts.

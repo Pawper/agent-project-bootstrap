@@ -14,6 +14,9 @@ scripts/board-sync.sh
 scripts/board.sh
 scripts/labels.sh
 scripts/next-number.sh
+scripts/protect-main.sh
+scripts/supabase-create.sh
+scripts/env-lib.sh
 scripts/state.sh
 scripts/worktrees-lib.sh
 scripts/worktrees.sh
