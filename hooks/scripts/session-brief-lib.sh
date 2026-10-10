@@ -179,6 +179,14 @@ rate_line() {
     }'
 }
 
+# project_slug PATH
+# The folder name Claude Code gives a project under ~/.claude/projects:
+# every character that is not a letter or a digit becomes "-", so
+# C:\Users\me\repo is C--Users-me-repo and /Users/me/repo is -Users-me-repo.
+project_slug() {
+  printf '%s' "$1" | sed 's/[^A-Za-z0-9]/-/g'
+}
+
 # newest_handoff LIST
 # LIST is one file per line as "mtime<TAB>path". Print the path of the
 # newest file whose name starts with "handoff-", or nothing.

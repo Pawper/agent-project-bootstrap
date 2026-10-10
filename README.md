@@ -139,8 +139,8 @@ This is what a person does with the plugin, from install to the first feature ag
 3. **Create the board and labels.** Run `sh scripts/board.sh OWNER OWNER/REPO`. It creates the seven state labels, the project board, its State field with the seven values, and links the repository.
 4. **Two settings GitHub cannot script.** In the board's Workflows tab, switch on the four built-in workflows listed under The project board. In branch protection on main, require exactly one check, `CI passed`, and leave "require branches to be up to date" off, as described under Branch protection on main.
 5. **Build the status page once.** Run `sh status/build.sh` and commit STATUS.md. From here on CI fails any PR that leaves the page stale, and the hook refuses hand edits to it.
-6. **Write the constitution and the first spec.** Fill in `specs/constitution.md` once, then copy `specs/FEATURE/` to `specs/<feature>/` for the first feature. If you use spec kit, run it inside that folder; the templates are plain Markdown and do not depend on it. From here on CI fails any PR that changes `src/` without a change in a spec folder.
-7. **Open the owner console.** Run `npx bitblitzin-bootstrap console` and open the page it names. Fill in `console/services.json` for the systems the project really talks to; the launch to-do shows what is left and clears on its own as settings land.
+6. **Write the constitution and the first spec.** Fill in `specs/constitution.md` once, then copy `specs/001-FEATURE/` to `specs/<feature>/` for the first feature. If you use spec kit, run it inside that folder; the templates are plain Markdown and do not depend on it. From here on CI fails any PR that changes `src/` without a change in a spec folder.
+7. **Open the owner console.** Run `node "$CLAUDE_PLUGIN_ROOT/console/cli.js" console` and open the page it names. Fill in `console/services.json` for the systems the project really talks to; the launch to-do shows what is left and clears on its own as settings land.
 8. **Turn on the drive.** Copy `.claude/project-drive.json` in and file one issue titled "Drive" labeled `drive`. From then on `/project-drive`, by hand or on a timer, reads the board and the checks, proposes what to do next, and waits for your approval before doing any of it. Every session also opens with the proposal under "Proposed next."
 9. **Day to day.** Each task starts as an issue with a State, filed from the template or with `gh issue create --label state:ready`, and the coordinator sets the board field with `scripts/state.sh`. Agents work in worktrees, run only the tests for the files they changed, and open PRs. CI runs only the classes a PR touches and reports once through `CI passed`. The merge queue script merges a green PR without a re-run when main moved outside its classes. The full suite runs on main after every merge and opens a `ci-red` issue when it fails. Every night the audit comments on the tracking issue only when an issue has no State or a merged PR left one stale.
 10. **When a hook refuses something.** The message says what was blocked and what to do instead; do that. A project that really needs an exception changes `.claude/generated-pages.txt` or disables the plugin for that repository. Nobody works around a hook.
@@ -226,7 +226,7 @@ All of them live in `templates/` and are meant to be copied into the project roo
 - `SETUP.md`: the one manual. Configuration by name, first run, migrations run, services.
 - `NOTICE.md`: credit for borrowed code, one line per item.
 - `status/`: one stub per feature in `stubs/`, a `services.txt`, and `lib.sh`, `build.sh` and `check.sh`. The build writes `STATUS.md`; the check fails when the page does not match the stubs, and CI runs it on every PR.
-- `specs/constitution.md` and `specs/FEATURE/spec.md`: the rules every spec obeys, written once, and the skeleton for one feature's spec. One folder per feature, so two PRs never edit the same spec file.
+- `specs/constitution.md` and `specs/001-FEATURE/spec.md`: the rules every spec obeys, written once, and the skeleton for one feature's spec. One folder per feature, so two PRs never edit the same spec file.
 - `scripts/ci/spec-check.sh`: fails a PR that changes `src/` without a change in a feature's spec folder. The constitution does not count, so nobody pokes it to satisfy the check. More than one spec folder in a PR is a warning that the task was too big, not a failure.
 - `scripts/ci/setup-check.sh` and `setup-paths.txt`: fails a PR that changes a setup file (migrations, the example env file, the container files, the workflows, the dependency manifests) without a change to the manual. The manual is `SETUP.md` unless a `manual PATH` line in `setup-paths.txt` names the one the project already keeps.
 - `scripts/ci/line-endings.sh` and `.gitattributes`: the attributes file forces LF everywhere; the check fails on any tracked text file that still has CRLF.
@@ -270,17 +270,13 @@ Two rules in the skill have no mechanical check anywhere: "report what was not d
 
 The piece a spec kit does not give you: one page that answers "what systems does this project talk to, what state is each in, and how do I do the routine things." It is kept current from the project's configuration, never written by hand. The screenshot at the top of this page is the sample configuration with a few settings present.
 
-**Two mounts, one source.** By default it is a small side app on your machine:
+**Two mounts, one source.** By default it is a small side app on your machine, run from the installed plugin:
 
 ```bash
-npx bitblitzin-bootstrap console
+node "$CLAUDE_PLUGIN_ROOT/console/cli.js" console
 ```
 
-That serves one page on localhost from the files in the current folder and nothing else. Until the package is on npm, the same command works straight from the repository:
-
-```bash
-npx github:Pawper/bitblitzin-bootstrap console
-```
+That serves one page on localhost from the files in the current folder and nothing else. The package is not on npm, so `npx bitblitzin-bootstrap` does not work; inside a Claude Code session `$CLAUDE_PLUGIN_ROOT` points at the installed plugin, and from a plain shell use the path to a checkout of this repository instead.
 
 When the owner wants it online, the same page mounts as a route behind the project's own sign-in. The project passes a function that reads its admin API, and the live numbers appear:
 
@@ -299,7 +295,7 @@ app.get('/owner', requireOwner, owner.handler);
 
 **One file drives it:** `console/services.json`. It lists the systems, the settings each depends on with a plain label for each, the links, the to-do items and their flags, and the FAQ entries. An agent adding a service adds an entry and the page follows. Nothing a person sees names a variable: the card says "the database address is still needed," not the name of the setting.
 
-**Three checks hold it together**, run by the tests and by `npx bitblitzin-bootstrap console --check`:
+**Three checks hold it together**, run by the tests and by `node "$CLAUDE_PLUGIN_ROOT/console/cli.js" console --check`:
 
 - Every name in `.env.example` has a card, a part or a to-do item. A setting with no card fails.
 - Every required question is present in the FAQ. The project declares its own list of ids under `faq.required`; without one, the sample's nine "How do I" and seven "What happens when" apply. A missing one fails, so a project cannot quietly drop the question it has no answer to.

@@ -15,7 +15,7 @@ repo=$2
 [ -n "$owner" ] && [ -n "$repo" ] || { echo "Usage: sh scripts/board.sh OWNER OWNER/REPO [TITLE | --existing NUMBER]" >&2; exit 2; }
 
 here=$(dirname "$0")
-sh "$here/labels.sh"
+sh "$here/labels.sh" >/dev/null && echo "labels: current"
 
 if [ "$3" = "--existing" ]; then
   number=$4
@@ -42,7 +42,12 @@ echo "linked to $repo"
 cat <<EOF
 
 Done. Two things are left to do by hand:
-1. Open the board, choose the Workflows tab, and switch on the four built-in workflows listed in the README.
+1. Open the board, choose the Workflows tab, and switch on four built-in workflows:
+   - Auto-add to project: repository this one, filter "is:issue is:open"
+   - Item closed: set Status to Done
+   - Pull request merged: set Status to Done
+   - Auto-add sub-issues to project: on, no settings
+   Leave Auto-archive items off until the board is busy.
 2. Set the board view to group by State. That view is the status report.
 
 To set State on a new issue from a script: sh scripts/state.sh $number $owner ISSUE_NUMBER "Ready"

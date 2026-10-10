@@ -9,6 +9,7 @@
 # listing them made every such pull request add a line to the manual, which
 # is the shared-page append the rules forbid.
 migrations/*
+supabase/migrations/*
 .env.example
 Dockerfile
 docker-compose*

@@ -30,6 +30,15 @@ if [ -f "$config" ]; then
   [ -n "$n" ] && max_lines=$n
 fi
 
+# The memory folder defaults to Claude Code's own for this project,
+# ~/.claude/projects/<slug>/memory, where the slug is the project path with
+# every non-alphanumeric character turned into "-". A memoryDir in the
+# config overrides it, for a project that keeps notes elsewhere.
+if [ -z "$memory_dir" ] && [ -n "$HOME" ]; then
+  native=$(pwd -W 2>/dev/null || pwd)
+  memory_dir="$HOME/.claude/projects/$(project_slug "$native")/memory"
+fi
+
 sections=$(brief_sections "$source")
 has() { case " $sections " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 

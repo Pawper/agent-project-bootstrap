@@ -18,17 +18,18 @@ default for each. In Claude Code use the question tool so the person can pick ra
 
 | Question | Why it matters | Changes |
 |---|---|---|
+| Is there a sibling repository to copy the stack from? | A studio's second project has the same tracker, CI, runners, test command, spec tool, database layout and console shape as its first; reading them from that repo answers eight of the rows below in one go | Every row marked (sibling): take the answer from the sibling's CLAUDE.md Stack heading, its `.github/workflows/ci.yml` `runs-on`, its `scripts/ci/classes.txt`, `setup-paths.txt`, `.claude/numbering.txt` and `console/services.json`, and confirm them in one line |
 | New project, or an existing one showing the symptoms? | An existing project needs the hooks and checks first and the moves to new homes second, one at a time | The order of the outputs; what is moved aside rather than created |
-| Where do issues live: GitHub, GitLab, Jira, Linear, other? | Every home in section 1 points at the tracker | The issue template, the board script, the state script, the audit, the filing hook's label |
-| Where does CI run: Actions, GitLab CI, Buildkite, other? | Section 4 is a set of jobs; the file that holds them differs | Which workflow files are copied or translated |
-| Which agent runtimes will work here: Claude Code only, or others too? | Hooks are per runtime; a rule with no hook needs a CI check instead | Whether AGENTS.md is a copy or the primary; which rules get a weaker check |
-| What is the one-file test command? | The sweep hook needs to know what a targeted run looks like; CLAUDE.md states it | The `TEST_COMMAND` placeholder; the per-class jobs |
+| Where do issues live: GitHub, GitLab, Jira, Linear, other? (sibling) | Every home in section 1 points at the tracker | The issue template, the board script, the state script, the audit, the filing hook's label |
+| Where does CI run: Actions, GitLab CI, Buildkite, other? (sibling) | Section 4 is a set of jobs; the file that holds them differs | Which workflow files are copied or translated |
+| Which agent runtimes will work here: Claude Code only, or others too? (sibling) | Hooks are per runtime; a rule with no hook needs a CI check instead | Whether AGENTS.md is a copy or the primary; which rules get a weaker check |
+| What is the one-file test command? (sibling) | The sweep hook needs to know what a targeted run looks like; CLAUDE.md states it | The `TEST_COMMAND` placeholder; the per-class jobs |
 | Which pages are generated? | The generated-page hook refuses edits to them | `.claude/generated-pages.txt` |
-| Spec tool: by hand, GitHub's spec-kit, something else, none yet? | Step 7 and the spec check assume a folder per feature; the tool that fills it is the person's choice | Whether to run a generator inside `specs/<feature>/` or copy the skeleton |
-| Self-hosted runners? | Section 4 wants a fallback when they are offline | Whether the runner-group comment in the full job becomes real |
+| Spec tool: by hand, GitHub's spec-kit, something else, none yet? (sibling) | Step 7 and the spec check assume a folder per feature; the tool that fills it is the person's choice | Whether to run a generator inside `specs/<feature>/` or copy the skeleton |
+| Where do CI jobs run: hosted, or the studio's self-hosted runners? (sibling) | Every job in ci.yml carries the `RUNS_ON` placeholder; a personal account has no runner groups, so there is no hosted fallback and the runner watch is what speaks when the runners are offline | `RUNS_ON` in `.github/workflows/ci.yml`: `ubuntu-latest`, or `[self-hosted, windows]` as both studio projects use; the gh-only workflows stay hosted |
 | Where will the work folder live, and where is it backed up? | Step 6 is outside the repo and nothing can create it for you | The path named in CLAUDE.md |
-| Is there a manual already, and where? | The setup check asks for a line in the manual whenever a setup file changes; it must point at the one the project keeps | The `manual PATH` line in `scripts/ci/setup-paths.txt`; the manual row in the homes table |
-| Which routine tasks and limits does this project really have? | The console's FAQ must answer this project's questions, not the sample's | The `faq.required` ids in `console/services.json` |
+| Is there a manual already, and where? (sibling) | The setup check asks for a line in the manual whenever a setup file changes; it must point at the one the project keeps | The `manual PATH` line in `scripts/ci/setup-paths.txt`; the manual row in the homes table |
+| Which routine tasks and limits does this project really have? (sibling) | The console's FAQ must answer this project's questions, not the sample's | The `faq.required` ids in `console/services.json` |
 
 Record the answers at the top of CLAUDE.md under a heading "Stack", three or four lines, so the next agent does not
 ask again. If the answers match the preferred stack, say so in one line and go on. If they do not, use section 0.
@@ -159,7 +160,7 @@ Create, in order:
 5. The setup document, the notice file, the one-screen status page and its build and check scripts.
 6. The work folder outside the repo, with a register for research and an off-site backup scheduled.
 7. The constitution, then the first spec.
-8. The owner console: `console/services.json` listing every outside system, the settings each depends on with a plain label, the links, the launch to-do with its flags, and the FAQ; served locally with `npx bitblitzin-bootstrap console`, and mounted online behind the owner sign-in when wanted. Its check fails when a name in the example env file has no card.
+8. The owner console: `console/services.json` listing every outside system, the settings each depends on with a plain label, the links, the launch to-do with its flags, and the FAQ; served locally with `node "$CLAUDE_PLUGIN_ROOT/console/cli.js" console`, and mounted online behind the owner sign-in when wanted. Its check fails when a name in the example env file has no card.
 9. The session brief's config, `.claude/session-brief.json`: the merge queue's log glob, the agent's memory folder, and the line limit.
 10. The drive's config, `.claude/project-drive.json`, and one open issue titled "Drive" labeled `drive`.
 
@@ -226,7 +227,7 @@ are ready to copy from `${CLAUDE_PLUGIN_ROOT}/templates/`:
 - Step 4: `.github/workflows/ci.yml`, `scripts/ci/` (classes, classifier, merge queue, spec, setup and line-endings checks), `.github/workflows/audit.yml`
 - Step 5: `SETUP.md`, `NOTICE.md`, `status/` and the `STATUS.md` it builds
 - Step 6: nothing in the plugin; it lives outside the repo, so create it by hand and name its path in CLAUDE.md
-- Step 7: `specs/constitution.md` and `specs/FEATURE/spec.md`, checked by `scripts/ci/spec-check.sh`
+- Step 7: `specs/constitution.md` and `specs/001-FEATURE/spec.md`, checked by `scripts/ci/spec-check.sh`
 - Step 8: `console/services.json` and `.env.example`; the page itself comes from the plugin's `console/` and needs no copy
 - Step 3 also: `.gitignore`, with `.scratch/` and the generated files
 - Step 4 also: `scripts/worktrees.sh` and `scripts/worktrees-lib.sh`, which the merge queue calls to check a pull request's folder when it is queued and to remove a merged branch's worktree and branch; `scripts/ci/shared-check.sh` and `shared-paths.txt`

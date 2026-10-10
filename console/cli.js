@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// npx bitblitzin-bootstrap console [--port 7777] [--root .] [--check]
+// node "$CLAUDE_PLUGIN_ROOT/console/cli.js" console [--port 7777] [--root .] [--check]
 //
 // console        serve the owner console for the project in the current folder
 // console --check  do not serve; fail when the config has gaps (used by CI and tests)
