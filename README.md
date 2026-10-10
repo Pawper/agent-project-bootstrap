@@ -19,12 +19,17 @@ Without it, thirty agents behave like thirty new hires with no manager: they wri
 
 It is the enforcement layer between an agent orchestrator and the repository: not a cockpit for launching agents, not a spec-writing tool, not a hosted merge queue. It sits alongside those. [Where it fits among them](https://bitblitzin.com/bootstrap#fits) is on the site.
 
-**Install**, inside a Claude Code session:
+**Install**, from a shell:
 
-```text
-/plugin marketplace add Pawper/bitblitzin-bootstrap
-/plugin install bitblitzin-bootstrap@bitblitzin-bootstrap
+```bash
+claude plugin marketplace add Pawper/bitblitzin-bootstrap
 ```
+
+```bash
+claude plugin install bitblitzin-bootstrap@bitblitzin-bootstrap
+```
+
+In a terminal session the same two lines work as `/plugin marketplace add ...` and `/plugin install ...`. In the desktop app `/plugin` opens a panel and ignores what follows it; use the panel's "add marketplace" with `Pawper/bitblitzin-bootstrap`, then install from it, or use the shell lines above.
 
 Then, in a new or struggling repository: `/project-bootstrap set this project up for many agents`.
 
@@ -81,14 +86,7 @@ What never changes: one home per kind of thing, nothing appended to a shared pag
 
 ### As a plugin
 
-Inside a Claude Code session:
-
-```text
-/plugin marketplace add Pawper/bitblitzin-bootstrap
-/plugin install bitblitzin-bootstrap@bitblitzin-bootstrap
-```
-
-Or from a shell, which also works in a setup script:
+From a shell, which also works in a setup script:
 
 ```bash
 claude plugin marketplace add Pawper/bitblitzin-bootstrap
@@ -97,6 +95,8 @@ claude plugin marketplace add Pawper/bitblitzin-bootstrap
 ```bash
 claude plugin install bitblitzin-bootstrap@bitblitzin-bootstrap
 ```
+
+In a terminal session the same two lines work as slash commands, `/plugin marketplace add Pawper/bitblitzin-bootstrap` and `/plugin install bitblitzin-bootstrap@bitblitzin-bootstrap`. In the desktop app `/plugin` opens its panel and ignores arguments: add the marketplace there by source, `Pawper/bitblitzin-bootstrap`, then install `bitblitzin-bootstrap` from it. The first line registers the catalog (this repository's `.claude-plugin/marketplace.json`); the second installs the plugin it lists, which is why both halves of `name@marketplace` read bitblitzin-bootstrap.
 
 Pick the scope you want when asked. User scope gives you the skill and the hooks in every project. Project scope writes the plugin into the repository's `.claude/settings.json` so every collaborator gets the hooks too, which is the point.
 
