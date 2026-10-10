@@ -31,6 +31,7 @@ Many agents work here at once. Each kind of thing has one home, every rule has s
 - Nothing is appended to a shared page. A PR names its spec in its body (`Spec: specs/<feature>`) and changes the spec only when the design changed; it changes `SETUP.md` only when a person must do a setup step; it changes a feature's status stub only when that feature's state changes; it adds no task to any file, because tasks are issues.
 - Tests prove the change and run per file. The full suite is the gate on main, not on the PR.
 - Everything a person sees is calm and plain, never a developer note: no issue numbers, fields or migrations in user-facing text.
+- GitHub's API has a secondary limit on concurrent GraphQL calls that trips long before the hourly quota. One queue process at a time; no loop of your own around it; after any rate-limit error wait 90 seconds before the next call, never retry at once; prefer `gh api` (REST) for a one-off read where `gh pr view` or `gh issue view` would do the same through GraphQL. The board scripts need GraphQL and belong to the coordinator.
 - Every date written here is the owner's local day, named in the Stack section above; the session brief prints today. A UTC timestamp from gh or a runner log is converted first, or an evening's work is dated tomorrow.
 - Report what was not done and why, not only what was. Say which commands were refused.
 - No wait loops; bounded commands; stop every shell when done.

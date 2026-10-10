@@ -41,13 +41,19 @@ The batch is built in its own worktree, a sibling of the repository named `<repo
 
 GitHub allows 5,000 API calls an hour for the account, shared by every tool and every agent. One evening with ten pull requests open, several waits running at once and `gh run watch` polling every few seconds spent it by midnight; from then every wait failed with a 403 that the queue reported as "not green yet", and nothing could land for an hour. The queue now paces itself:
 
+There are two limits, and the one that bites is not the obvious one. The hourly quota (5,000 REST calls, 5,000 GraphQL points) was spent once by a fast watch loop. The secondary limit, on concurrent and point-heavy GraphQL requests, tripped on a night with seven agents and seven open pull requests while the hourly quota still showed thousands left: `gh pr list`, `gh pr view`, `gh pr checks` and the board script all go through GraphQL, and GitHub extends the block when callers retry at once. So:
+
+- The queue makes every call through REST (`gh api`), which has its own budget and no points: one record per pull request per round, cached, plus one check-runs read. Nothing in the queue uses `gh pr` or `gh issue`.
+- A refused call backs off, 90 seconds the first time and five minutes the second, and the third stops the queue. A spent hourly quota waits for the reset. The queue never retries at once.
 - Every wait polls every thirty seconds, never faster, and the drain's rounds wait two minutes.
 - Before each round and each wait it reads the budget (that call is free) and, when fewer than `QUEUE_RATE_FLOOR` calls are left (default 500), sleeps until the window resets and says so in one line.
 - A 403 for the rate limit is named: "GitHub API rate limit reached; it resets at HH:MM UTC", and the queue stops.
 - One queue at a time. A drain or a batch takes `.scratch/queue/lock`; a second one is refused with a line naming the first. A lock whose process is gone is taken over.
 - The session brief shows the remaining budget when it is low.
 
-Never write a watch loop around the queue, and never run `gh run watch` with its default interval; run `--drain` and let it pace itself. If you must watch one run by hand, `gh run watch ID -i 30`.
+Never write a watch loop around the queue, and never run `gh run watch` with its default interval; run `--drain` and let it pace itself. If you must watch one run by hand, `gh run watch ID -i 30`. For agents working alongside the queue: one queue process at a time, no drain on a timer faster than the drain's own rounds, 90 seconds between retries after any rate-limit error, and `gh api` (REST) for one-off reads where a `gh pr` or `gh issue` command would do the same through GraphQL. The board scripts must use GraphQL, since Projects v2 has no REST API; keep them to the coordinator, not every agent.
+
+The drain workflow's `QUEUE_TOKEN` decides whose budget the queue's polling spends. A token of the owner shares the owner's 5,000 with every agent on the machine. A token from a separate machine account gives the queue its own 5,000, and the workflows' default `GITHUB_TOKEN` has its own per-repository budget as well, so the scheduled workflows never compete with the agents.
 
 ## Only through the queue
 

@@ -795,6 +795,23 @@ eq "three green: batch now" "no" "$(drain_hold 3 4)"
 eq "nothing running: merge" "no" "$(drain_hold 1 0)"
 eq "nothing green: nothing to hold" "no" "$(drain_hold 0 2)"
 
+printf '\n# check-runs and mergeable_state through REST\n'
+eq "no check runs is none" "none" "$(rest_rollup '')"
+eq "all success is green" "green" "$(rest_rollup 'success
+skipped
+neutral')"
+eq "one failure is red" "red" "$(rest_rollup 'success
+failure')"
+eq "a run still going is pending" "pending" "$(rest_rollup 'success
+in_progress')"
+eq "red beats pending" "red" "$(rest_rollup 'queued
+timed_out')"
+eq "dirty is conflicting" "CONFLICTING" "$(mergeable_word dirty)"
+eq "clean is mergeable" "MERGEABLE" "$(mergeable_word clean)"
+eq "behind is still mergeable" "MERGEABLE" "$(mergeable_word behind)"
+eq "unknown is unknown" "UNKNOWN" "$(mergeable_word unknown)"
+eq "empty is unknown" "UNKNOWN" "$(mergeable_word '')"
+
 printf '\n# the API budget and one queue at a time\n'
 eq "plenty left, no wait" "0" "$(rate_wait "4000	2000" 1000)"
 eq "under the floor, wait until the reset" "600" "$(rate_wait "120	1600" 1000)"
