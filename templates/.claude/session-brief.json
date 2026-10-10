@@ -1,6 +1,6 @@
 {
-  "_comment": "Read by the session-brief hook at every session start. queueLogGlob: where the merge queue writes its logs, a shell glob relative to the project root; the brief says whether one was written in the last two hours and shows its last line. memoryDir: the agent's memory folder, where handoff notes are files named handoff-*; the brief shows the first two lines of the newest. maxLines: the most the brief prints. Without this file the brief prints only the git and gh sections.",
+  "_comment": "Read by the session-brief hook at every session start. queueLogGlob: where the merge queue writes its logs, a shell glob relative to the project root; the brief says whether one was written in the last two hours and shows its last line. memoryDir: the agent's memory folder, where handoff notes are files named handoff-*; the brief shows the first two lines of the newest. Leave it empty and the brief uses Claude Code's own memory folder for this project, ~/.claude/projects/<slug>/memory, where the slug is the project path with every non-alphanumeric character turned into a dash. maxLines: the most the brief prints. Without this file the brief prints only the git and gh sections.",
   "queueLogGlob": "logs/merge-queue-*.log",
-  "memoryDir": "../agent-memory",
+  "memoryDir": "",
   "maxLines": 40
 }

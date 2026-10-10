@@ -23,7 +23,7 @@ Many agents work here at once. Each kind of thing has one home, every rule has s
 | Research and findings | The work folder outside the repo at WORK_FOLDER, backed up off-site | the docs folder |
 | Coordination state (what merged when, what was uploaded) | git history, CI, the storage bucket | written down by hand |
 | The manual | `SETUP.md`: configuration, keys by name, migrations run | anything that changes per feature |
-| Design | `specs/FEATURE/`, written before building | design notes in issues only |
+| Design | `specs/NNN-feature/`, numbered in order and written before building | design notes in issues only |
 | Credit for borrowed code or content | `NOTICE.md` | per-item narrative |
 
 ## Rules
@@ -84,6 +84,6 @@ The hooks come from the `bitblitzin-bootstrap` plugin. If a hook refuses a comma
 - Check it is current: `sh status/check.sh`
 - Run one test file: `TEST_COMMAND path/to/file`
 - Classify a change: `sh scripts/ci/classify.sh`
-- Open the owner console: `npx bitblitzin-bootstrap console`; check its config: `npx bitblitzin-bootstrap console --check`. Adding a service means adding an entry to `console/services.json`.
+- Open the owner console: `node "$CLAUDE_PLUGIN_ROOT/console/cli.js" console`; check its config: `node "$CLAUDE_PLUGIN_ROOT/console/cli.js" console --check`. Adding a service means adding an entry to `console/services.json`.
 - Where every open issue and pull request really stands: `/project-status`. Light readers summarize bodies and comments, only for items that changed; you keep one line per item. Do not read the item files yourself.
 - Propose the next round: `/project-drive`. It reads the board and the checks, proposes, and does nothing until a person approves in the session or on the issue labeled `drive`. Config in `.claude/project-drive.json`.

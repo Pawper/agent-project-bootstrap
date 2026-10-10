@@ -13,7 +13,7 @@
 ci     .github/* scripts/ci/*
 status status/* STATUS.md
 specs  specs/*
-data   seed/* migrations/*
+data   seed/* migrations/* supabase/*
 tests  tests/* test/*
 app    src/* package.json package-lock.json pyproject.toml go.mod Cargo.toml
 docs   docs/* *.md

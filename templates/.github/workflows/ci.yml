@@ -5,6 +5,11 @@
 #
 # Replace each "echo" step with the project's real command. Keep the job
 # names: the merge queue reads nothing from them, but people do.
+#
+# RUNS_ON is the runner label for every job here. ubuntu-latest for hosted
+# runners; [self-hosted, windows] for a studio's own machines, which is
+# what both existing studio projects use. The gh-only workflows (audit,
+# board sync, state label, runner watch) stay hosted; they need no code.
 name: CI
 
 on:
@@ -18,7 +23,7 @@ permissions:
 
 jobs:
   classify:
-    runs-on: ubuntu-latest
+    runs-on: RUNS_ON
     outputs:
       classes: ${{ steps.classes.outputs.classes }}
     steps:
@@ -41,7 +46,7 @@ jobs:
   app:
     needs: classify
     if: github.event_name == 'pull_request' && (contains(needs.classify.outputs.classes, 'app') || contains(needs.classify.outputs.classes, 'tests') || contains(needs.classify.outputs.classes, 'other'))
-    runs-on: ubuntu-latest
+    runs-on: RUNS_ON
     steps:
       - uses: actions/checkout@v4
       - name: Build and run the tests for this class
@@ -53,7 +58,7 @@ jobs:
   data:
     needs: classify
     if: github.event_name == 'pull_request' && (contains(needs.classify.outputs.classes, 'data') || contains(needs.classify.outputs.classes, 'other'))
-    runs-on: ubuntu-latest
+    runs-on: RUNS_ON
     steps:
       - uses: actions/checkout@v4
       - name: Check the data shape
@@ -62,7 +67,7 @@ jobs:
   docs:
     needs: classify
     if: github.event_name == 'pull_request' && (contains(needs.classify.outputs.classes, 'docs') || contains(needs.classify.outputs.classes, 'other'))
-    runs-on: ubuntu-latest
+    runs-on: RUNS_ON
     steps:
       - uses: actions/checkout@v4
       - name: Check the docs
@@ -75,7 +80,7 @@ jobs:
     # alone made every pull request append to spec.md.
     needs: classify
     if: github.event_name == 'pull_request' && (contains(needs.classify.outputs.classes, 'app') || contains(needs.classify.outputs.classes, 'other'))
-    runs-on: ubuntu-latest
+    runs-on: RUNS_ON
     steps:
       - uses: actions/checkout@v4
         with:
@@ -91,7 +96,7 @@ jobs:
     # A change to a setup file must come with a line in SETUP.md.
     needs: classify
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: RUNS_ON
     steps:
       - uses: actions/checkout@v4
         with:
@@ -104,7 +109,7 @@ jobs:
     # of shared paths is empty.
     needs: classify
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: RUNS_ON
     steps:
       - uses: actions/checkout@v4
         with:
@@ -117,7 +122,7 @@ jobs:
     # instead of its issue number. Runs on every pull request, so a batch
     # that merged two migrations each called 0022 fails before main.
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: RUNS_ON
     steps:
       - uses: actions/checkout@v4
         with:
@@ -127,7 +132,7 @@ jobs:
 
   line-endings:
     # Runs on every PR and every push: mixed endings make every diff a conflict.
-    runs-on: ubuntu-latest
+    runs-on: RUNS_ON
     steps:
       - uses: actions/checkout@v4
       - name: Fail when a text file has CRLF endings
@@ -135,7 +140,7 @@ jobs:
 
   status-page:
     # Runs on every PR and every push: the page must never go stale.
-    runs-on: ubuntu-latest
+    runs-on: RUNS_ON
     steps:
       - uses: actions/checkout@v4
       - name: Fail when STATUS.md is stale
@@ -150,7 +155,7 @@ jobs:
     name: CI passed
     needs: [classify, app, data, docs, spec-check, setup-check, shared-check, numbering-check, line-endings, status-page]
     if: always() && github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: RUNS_ON
     steps:
       - name: Report once for every class check that ran
         shell: sh
@@ -167,16 +172,16 @@ jobs:
 
   full:
     # The gate on main after every merge. The whole suite, nothing skipped.
-    # With self-hosted runners, list them first and a hosted one last so a
-    # job still runs when they are offline: runs-on: [self-hosted, linux] is
-    # one label set; GitHub picks the first idle runner that matches, so use
-    # a runner group with a hosted fallback rather than a label alone.
+    # On a personal account there are no runner groups and so no hosted
+    # fallback: a job on self-hosted runners waits while they are offline,
+    # and the hourly runner-watch workflow says so. An organization can put
+    # the runners in a group with a hosted fallback instead.
     # On a self-hosted Windows runner, copy the job-level default shell from
     # runner-check.yml (Git's bash by path), keep PowerShell steps on
     # "shell: pwsh", and never put an expression in "shell:". Run
     # scripts/ci/runner-doctor.sh on the machine first.
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: RUNS_ON
     steps:
       - uses: actions/checkout@v4
       - name: Run everything
@@ -185,7 +190,7 @@ jobs:
   report-red:
     needs: full
     if: always() && github.event_name == 'push' && needs.full.result == 'failure'
-    runs-on: ubuntu-latest
+    runs-on: RUNS_ON
     steps:
       - name: Open an issue unless one is already open
         env:
