@@ -123,7 +123,7 @@ else
   note="digest: none yet; run /project-status so the proposal reads bodies and comments, not only labels"
 fi
 
-echo "proposal (runners $runners, at most $max_agents agents, at most $max_minutes minutes; $note):"
+echo "proposal for $(date '+%A %Y-%m-%d'), the owner's local day (runners $runners, at most $max_agents agents, at most $max_minutes minutes; $note):"
 round=$(propose_round "$snapshot" "$runners" "$max_agents")
 if [ -n "$extra" ]; then
   round=$(printf '%s\n%s\n' "$extra" "$round" | awk '/^stop: (nothing to propose|everything left waits|work is in flight)/ { print "stop: proposal ready for approval"; next } { print }')
