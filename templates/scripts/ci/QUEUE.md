@@ -33,9 +33,13 @@ A drain started with `/loop` runs only while that session is open; close the app
 
 With a session open as well, `/loop 20m sh scripts/ci/merge-queue.sh --drain` still works; the lock refuses the second of two that overlap.
 
+## Reading a drain while it runs
+
+Every line the drain prints is also appended, with the time, to `.scratch/queue/log`, including the lines of the batch or serial runs it starts. A drain in the background can be followed with `tail -f .scratch/queue/log`. When the drain ends with "Needs attention", each pull request that failed CI twice comes with its failing check runs by name and the first error lines of each job's log, so the cause is in the output and not three more calls away. A listing that fails is reported as a failed listing and retried, never as an empty queue.
+
 ## Where the batch is built
 
-The batch is built in its own worktree, a sibling of the repository named `<repo>-wt-batch` or the folder `QUEUE_WORKTREE` names, never in the main checkout, so a person working there is not switched onto the batch branch mid-drain. The worktree is reused; each package's `node_modules` is linked from the main checkout when the worktree has none. Before anything is merged, the type-check runs once on the base there. A red base (packages not installed, generated types stale) stops the batch with "main is red here" and the first error, and drops nobody; that once dropped eight green pull requests for a fault none of them had. A test runner that cannot start stops the batch the same way.
+The batch is built in its own worktree, a sibling of the repository named `<repo>-wt-batch` or the folder `QUEUE_WORKTREE` names, never in the main checkout, so a person working there is not switched onto the batch branch mid-drain. The worktree is reused; each package's `node_modules` is linked from the main checkout (the first worktree git lists, whichever folder the queue was started from) when the worktree has none, and when the main checkout has none to link either, the queue runs `npm ci` in that package first. A type-check that cannot run for want of packages is reported as that, not as a red base. Before anything is merged, the type-check runs once on the base there. A red base (packages not installed, generated types stale) stops the batch with "main is red here" and the first error, and drops nobody; that once dropped eight green pull requests for a fault none of them had. A test runner that cannot start stops the batch the same way.
 
 ## Inside the API budget
 

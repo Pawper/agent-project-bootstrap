@@ -77,9 +77,25 @@ if [ -z "$work" ]; then echo "Everything the plugin owns is current."; exit 0; f
 if [ "$apply" = no ]; then echo "Nothing was changed. Add --apply to write these on a new branch."; exit 0; fi
 
 [ -z "$(git status --porcelain --untracked-files=no)" ] || { echo "The working tree has uncommitted changes; commit or move them aside first." >&2; exit 1; }
-branch="template-sync-$(date +%Y-%m-%d)"
-git show-ref --verify --quiet "refs/heads/$branch" && branch="$branch-$(date +%H%M)"
-git checkout -q -b "$branch"
+# On a branch made for the sync (anything but the default branch), commit
+# there; on the default branch, cut a dated one. A worktree on 556-plugin-sync
+# once got a second branch it never asked for.
+current=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+default=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')
+case "$current" in
+  ''|HEAD|main|master|"${default:-main}")
+    branch="template-sync-$(date +%Y-%m-%d)"
+    git show-ref --verify --quiet "refs/heads/$branch" && branch="$branch-$(date +%H%M)"
+    git checkout -q -b "$branch" ;;
+  *) branch=$current ;;
+esac
+# A workflow the sync adds carries RUNS_ON and RUN_SHELL; when the project's
+# own ci.yml already says where jobs run and which shell, use that.
+runs_on=""; run_shell=""
+if [ -f .github/workflows/ci.yml ]; then
+  runs_on=$(ci_runs_on "$(cat .github/workflows/ci.yml)")
+  run_shell=$(ci_shell "$(cat .github/workflows/ci.yml)")
+fi
 written=""
 for p in $changed $missing $defaults; do
   if [ "$force" = no ]; then
@@ -88,12 +104,26 @@ for p in $changed $missing $defaults; do
   mkdir -p "$(dirname "$p")"
   cp "$tpl/$p" "$p"
   case "$p" in *.sh) chmod +x "$p" 2>/dev/null || true ;; esac
+  case "$p" in
+    .github/workflows/*.yml)
+      if [ -n "$runs_on" ] && grep -q 'RUNS_ON' "$p"; then
+        awk -v v="$runs_on" '{ gsub(/RUNS_ON/, v); print }' "$p" > "$p.tmp" && mv "$p.tmp" "$p"
+        echo "  filled:   RUNS_ON in $p from ci.yml ($runs_on)"
+      fi
+      if [ -n "$run_shell" ] && grep -q 'RUN_SHELL' "$p"; then
+        awk -v v="$run_shell" '{ gsub(/RUN_SHELL/, v); print }' "$p" > "$p.tmp" && mv "$p.tmp" "$p"
+        echo "  filled:   RUN_SHELL in $p from ci.yml"
+      fi
+      needs=$(workflow_needs "$(cat "$p")")
+      [ -n "$needs" ] && echo "  needs:    $p reads $needs; set them in the repository before its first run"
+      grep -q 'RUNS_ON\|RUN_SHELL' "$p" && echo "  todo:     $p still has a RUNS_ON or RUN_SHELL placeholder to fill" ;;
+  esac
   written="$written $p"
 done
 [ -n "$(printf '%s' "$written" | tr -d ' ')" ] || { echo "Nothing written: every differing file was edited here. Pass --force to replace them."; git checkout -q -; exit 0; }
 git add -- $written
 git commit -q -m "Sync the plugin's scripts and workflows to bitblitzin-bootstrap $version" -m "Plugin-owned files were brought up to date with the installed plugin; config files that did not exist were added with their defaults. Files the project owns, and plugin-owned files the project had edited, were not touched."
-echo "Committed on branch $branch. Review the diff, then push it and open a pull request."
+echo "Committed on branch $branch. Review the diff, then push it and open a pull request. Secrets and variables named above must exist before the added workflows run."
 # New state labels arrive with labels.sh; state.sh fails until they exist.
 case " $written " in
   *" scripts/labels.sh "*)

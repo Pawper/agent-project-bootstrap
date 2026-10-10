@@ -938,6 +938,19 @@ default scripts/ci/task-files.txt'
 eq "plugin-owned paths" "scripts/ci/merge-queue.sh
 .github/workflows/audit.yml" "$(owned_paths "$owned")"
 eq "config with defaults" "scripts/ci/task-files.txt" "$(default_paths "$owned")"
+eq "secrets and variables a workflow reads" "secrets PROJECT_TOKEN, QUEUE_TOKEN; variables BOARD_NUMBER" "$(workflow_needs 'token: ${{ secrets.QUEUE_TOKEN }}
+env: ${{ secrets.PROJECT_TOKEN }} ${{ vars.BOARD_NUMBER }} ${{ secrets.QUEUE_TOKEN }}')"
+eq "a workflow that reads none says nothing" "" "$(workflow_needs 'run: echo hi')"
+eq "runs-on from a project workflow" "[self-hosted, windows]" "$(ci_runs_on 'jobs:
+  a:
+    runs-on: [self-hosted, windows]
+  b:
+    runs-on: ubuntu-latest')"
+eq "a RUNS_ON placeholder is not a value" "" "$(ci_runs_on '    runs-on: RUNS_ON')"
+eq "the shell from a project workflow, quotes kept" "'C:\\PROGRA~1\\Git\\bin\\bash.exe -eo pipefail {0}'" "$(ci_shell "defaults:
+  run:
+    shell: 'C:\\PROGRA~1\\Git\\bin\\bash.exe -eo pipefail {0}'")"
+eq "a RUN_SHELL placeholder is not a value" "" "$(ci_shell '    shell: RUN_SHELL')"
 eq "a Windows checkout is the same text" "yes" "$(same_text "$(printf 'a\r\nb\r\n')" "$(printf 'a\nb')")"
 eq "a changed line is not" "no" "$(same_text 'a
 b' 'a

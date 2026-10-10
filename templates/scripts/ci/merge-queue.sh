@@ -92,6 +92,10 @@ mkdir -p "$flaky_dir" 2>/dev/null || true
 # five minutes, then stops) rather than retrying at once, which makes
 # GitHub extend the block; and runs one queue at a time.
 gh_err=$flaky_dir/gh.err
+# Every line the drain prints is also appended to .scratch/queue/log with
+# the time, so a run in the background can be read before it ends.
+log_file=$flaky_dir/log
+say() { echo "$1"; printf '%s %s\n' "$(date '+%H:%M')" "$1" >> "$log_file" 2>/dev/null || true; }
 hhmm() { date -u -d "@$1" +%H:%M 2>/dev/null || date -u -r "$1" +%H:%M 2>/dev/null || echo "$1"; }
 rate_budget() { gh api rate_limit --jq '[.resources.core, .resources.graphql] | min_by(.remaining) | "\(.remaining)\t\(.reset)"' 2>/dev/null || true; }
 rate_guard() {
@@ -103,8 +107,8 @@ rate_guard() {
 }
 # rate_stop: after a gh call whose stderr went to $gh_err, back off when
 # GitHub refused it for a rate limit. The hourly quota spent: wait for the
-# reset. The secondary limit: 90 seconds the first time, five minutes the
-# second, stop the third, and never retry at once. rate_ok clears the
+# reset. The secondary limit, which the budget read cannot see: 60 seconds,
+# then 120, 240 and 480, and the fifth refusal stops; never retry at once. rate_ok clears the
 # count after a round that went through.
 rate_stop() {
   [ "$(rate_limit_hit "$(cat "$gh_err" 2>/dev/null)")" = yes ] || return 0
@@ -117,11 +121,13 @@ rate_stop() {
   fi
   n=$(cat "$flaky_dir/rate.hits" 2>/dev/null || echo 0); n=$((n + 1)); echo "$n" > "$flaky_dir/rate.hits"
   case $n in
-    1) w=90 ;;
-    2) w=300 ;;
-    *) echo "GitHub refused three calls for its secondary rate limit (too many concurrent or point-heavy requests from this account); stopping. Run the queue again in ten minutes, one copy, with nothing else polling."; exit 1 ;;
+    1) w=60 ;;
+    2) w=120 ;;
+    3) w=240 ;;
+    4) w=480 ;;
+    *) say "GitHub refused five calls for its secondary rate limit (too many concurrent or point-heavy requests from this account); stopping. Run the queue again in ten minutes, one copy, with nothing else polling."; exit 1 ;;
   esac
-  echo "GitHub refused the call for its secondary rate limit (hit $n of 3); waiting $w seconds, never retrying at once."
+  say "GitHub refused the call for its secondary rate limit, which the budget read cannot see (hit $n of 5); waiting $w seconds, never retrying at once."
   sleep "$w"
 }
 rate_ok() { rm -f "$flaky_dir/rate.hits" 2>/dev/null || true; }
@@ -396,6 +402,25 @@ typecheck_ok() {
   return 0
 }
 
+# why_red PR: the failing check runs on the pull request's head, by name,
+# and the first lines of each job's log that look like an error, so
+# "failed CI twice" comes with its cause instead of three more calls.
+why_red() {
+  wr_sha=$(pr_field "$1" 2)
+  wr_jobs=$(gh api "repos/{owner}/{repo}/commits/$wr_sha/check-runs?per_page=100" --jq '.check_runs[] | select(.conclusion == "failure" or .conclusion == "timed_out") | "\(.name)\t\(.id)"' 2>/dev/null || true)
+  [ -n "$wr_jobs" ] || { echo "    (no failing check run on its head commit now; it may have gone green since)"; return 0; }
+  printf '%s\n' "$wr_jobs" | while IFS="$tab" read -r wr_name wr_id; do
+    [ -n "$wr_name" ] || continue
+    wr_lines=$(gh api "repos/{owner}/{repo}/actions/jobs/$wr_id/logs" 2>/dev/null | tr -d '\r' | grep -E 'error|Error|FAIL|AssertionError' | grep -v '^[[:space:]]*$' | head -n 3 | cut -c1-160)
+    if [ -n "$wr_lines" ]; then
+      echo "    $wr_name failed:"
+      printf '%s\n' "$wr_lines" | sed 's/^/      /'
+    else
+      echo "    $wr_name failed (its log could not be read; open the run)"
+    fi
+  done
+}
+
 # tidy_worktree BRANCH: remove the worktree of a branch that just merged,
 # when it is clean. The branch itself is kept. Quiet when there is none.
 tidy_worktree() {
@@ -419,8 +444,21 @@ if [ "$mode" = drain ]; then
     rate_guard
     # One REST list, then one metadata call and one check-runs call per
     # open pull request, each on the REST budget and cached for the round.
-    listed=$(gh api "repos/{owner}/{repo}/pulls?state=open&per_page=100" --jq '.[] | [.number, (.draft | tostring), .head.sha, .base.ref] | @tsv' 2>"$gh_err" || true)
-    rate_stop
+    # A listing that fails is an error, never an empty queue: one run read
+    # "nothing left to merge" with fourteen open because the call had failed.
+    tries=0
+    while :; do
+      if listed=$(gh api "repos/{owner}/{repo}/pulls?state=open&per_page=100" --jq '.[] | [.number, (.draft | tostring), .head.sha, .base.ref] | @tsv' 2>"$gh_err"); then break; fi
+      l_err=$(head -n 1 "$gh_err" 2>/dev/null | tr -d '\r' | cut -c1-120)
+      rate_stop
+      tries=$((tries + 1))
+      if [ "$tries" -ge 3 ]; then
+        say "Could not list the open pull requests after three tries (${l_err:-no detail}). Nothing was merged; this is a failed listing, not an empty queue."
+        exit 1
+      fi
+      say "Listing the open pull requests failed (${l_err:-no detail}); trying again in 60 seconds."
+      sleep 60
+    done
     open=$(printf '%s\n' "$listed" | while IFS="$tab" read -r o_num o_draft o_sha o_base; do
       [ -n "$o_num" ] || continue
       printf '%s\t%s\t%s\t%s\t%s\n' "$o_num" "$o_draft" "$(mergeable_word "$(pr_field "$o_num" 5)")" "$(pr_rollup "$o_sha")" "$o_base"
@@ -432,7 +470,7 @@ if [ "$mode" = drain ]; then
       rb=$(pr_field "$r" 1)
       rid=$(latest_run "$rb"); rid=${rid%%	*}
       if [ -n "$rid" ] && gh run rerun "$rid" --failed >/dev/null 2>&1; then
-        echo "round $round: #$r failed CI; re-running its failed jobs once."
+        say "round $round: #$r failed CI; re-running its failed jobs once."
       fi
       retried="$retried $r"
     done
@@ -446,34 +484,38 @@ if [ "$mode" = drain ]; then
     if [ "$n" -gt 0 ] && [ "$(drain_hold "$n" "$waiting")" = yes ] && [ "$elapsed" -lt $((drain_minutes * 60)) ]; then
       # A serial merge now would move main under the ones still running
       # and send them back round CI; the batch after it would be empty.
-      echo "round $round: $n green, $waiting still running CI; holding the serial merge until they finish, so it does not send them back round CI."
+      say "round $round: $n green, $waiting still running CI; holding the serial merge until they finish, so it does not send them back round CI."
       round=$((round - 1))
       sleep 120
       continue
     fi
     if [ "$n" -eq 0 ]; then
       if [ "$waiting" -gt 0 ] && [ "$elapsed" -lt $((drain_minutes * 60)) ]; then
-        echo "round $round: nothing new is green; $waiting pull request(s) still running CI, waiting two minutes."
+        say "round $round: nothing new is green; $waiting pull request(s) still running CI, waiting two minutes."
         sleep 120
         continue
       fi
-      if [ "$waiting" -gt 0 ]; then echo "round $round: nothing new is green, and $waiting still running after $drain_minutes minutes; stopping."
-      else echo "round $round: nothing left to merge."; fi
+      if [ "$waiting" -gt 0 ]; then say "round $round: nothing new is green, and $waiting still running after $drain_minutes minutes; stopping."
+      else say "round $round: nothing left to merge."; fi
       break
     fi
-    echo "round $round: $n green pull request(s): $(printf '%s' "$pick" | tr '\n' ' ')"
+    say "round $round: $n green pull request(s): $(printf '%s' "$pick" | tr '\n' ' ')"
     QUEUE_IN_DRAIN=1; export QUEUE_IN_DRAIN
-    if [ "$n" -gt 2 ]; then sh "$0" --batch --base "$base" $pick || true; else sh "$0" --serial --base "$base" $pick || true; fi
+    if [ "$n" -gt 2 ]; then sh "$0" --batch --base "$base" $pick 2>&1 | tee -a "$log_file" || true; else sh "$0" --serial --base "$base" $pick 2>&1 | tee -a "$log_file" || true; fi
     tried="$tried $(printf '%s' "$pick" | tr '\n' ' ')"
     if [ $(( $(date +%s) - d_start )) -ge $((drain_minutes * 60)) ]; then
-      echo "Drained for $drain_minutes minutes; stopping. Run --drain again to go on."
+      say "Drained for $drain_minutes minutes; stopping. Run --drain again to go on."
       break
     fi
   done
-  echo "queue done"
+  say "queue done"
   if [ -n "$attention" ]; then
-    echo "Needs attention:"
-    printf '%s\n' "$attention" | awk -F'\t' '{ printf "  #%s %s\n", $1, $2 }'
+    say "Needs attention:"
+    printf '%s\n' "$attention" | while IFS="$tab" read -r a_num a_why; do
+      [ -n "$a_num" ] || continue
+      say "  #$a_num $a_why"
+      case "$a_why" in *"failed CI twice"*) why_red "$a_num" | tee -a "$log_file" ;; esac
+    done
     exit 1
   fi
   exit 0
@@ -498,8 +540,12 @@ branch=$(batch_branch_name "$day" "$n")
 while git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; do
   n=$((n + 1)); branch=$(batch_branch_name "$day" "$n")
 done
-main_dir=$(pwd)
-wt=${QUEUE_WORKTREE:-"$(cd .. && pwd)/$(basename "$main_dir")-wt-batch"}
+# The main checkout is the first worktree git lists, whatever folder the
+# queue was started from; its node_modules are the ones to link, and the
+# batch worktree is named after it.
+main_dir=$(git worktree list --porcelain 2>/dev/null | sed -n '1s/^worktree //p' | tr -d '\r')
+[ -n "$main_dir" ] && [ -d "$main_dir" ] || main_dir=$(pwd)
+wt=${QUEUE_WORKTREE:-"$(cd "$main_dir/.." && pwd)/$(basename "$main_dir")-wt-batch"}
 if [ -e "$wt/.git" ]; then
   git -C "$wt" checkout -q -B "$branch" "origin/$base"
 else
@@ -509,12 +555,19 @@ fi
 # package's node_modules the worktree lacks and the main checkout has.
 link_modules() {
   git ls-files -- package.json '*/package.json' 2>/dev/null | sed 's#/package\.json$##; s#^package\.json$#.#' | while IFS= read -r d; do
-    [ -d "$main_dir/$d/node_modules" ] && [ ! -e "$wt/$d/node_modules" ] || continue
+    [ ! -e "$wt/$d/node_modules" ] || continue
     mkdir -p "$wt/$d"
-    case "$(uname -s 2>/dev/null)" in
-      MINGW*|MSYS*|CYGWIN*) cmd //c mklink /J "$(cygpath -w "$wt/$d/node_modules")" "$(cygpath -w "$main_dir/$d/node_modules")" >/dev/null 2>&1 || true ;;
-      *) ln -s "$main_dir/$d/node_modules" "$wt/$d/node_modules" 2>/dev/null || true ;;
-    esac
+    if [ -d "$main_dir/$d/node_modules" ]; then
+      case "$(uname -s 2>/dev/null)" in
+        MINGW*|MSYS*|CYGWIN*) cmd //c mklink /J "$(cygpath -w "$wt/$d/node_modules")" "$(cygpath -w "$main_dir/$d/node_modules")" >/dev/null 2>&1 || true ;;
+        *) ln -s "$main_dir/$d/node_modules" "$wt/$d/node_modules" 2>/dev/null || true ;;
+      esac
+    elif [ -f "$wt/$d/package-lock.json" ] && command -v npm >/dev/null 2>&1; then
+      # Nothing to link: install, so a fresh worktree is not mistaken for
+      # a red base. A missing install once dropped a whole batch twice.
+      echo "Installing packages in $wt/$d (no node_modules to link from $main_dir/$d)."
+      (cd "$wt/$d" && npm ci --no-audit --no-fund >/dev/null 2>"$flaky_dir/install.err") || echo "  npm ci failed: $(tail -n 1 "$flaky_dir/install.err" 2>/dev/null)"
+    fi
   done
 }
 link_modules
@@ -525,7 +578,12 @@ echo "batch branch $branch in $wt from origin/$base"
 # after its merge, and all of them were dropped for a fault none of them
 # had. Nothing is dropped for that; the batch stops and says what is red.
 if [ -n "$typecheck" ] && ! typecheck_ok "$(git -C "$wt" ls-files)" "$wt"; then
-  echo "origin/$base is red here before any merge: $(head -n 1 "$flaky_dir/typecheck.err" 2>/dev/null | tr -d '\r')"
+  tc_first=$(grep -v '^[[:space:]]*$' "$flaky_dir/typecheck.err" 2>/dev/null | head -n 1 | tr -d '\r')
+  case "$tc_first" in
+    *"not the tsc command"*|*"Cannot find module"*|*"ENOENT"*|*"command not found"*)
+      echo "The type-check could not run in $wt (packages are not installed there: $tc_first). That is not a red base." ;;
+    *) echo "origin/$base is red here before any merge: $tc_first" ;;
+  esac
   echo "Nothing was dropped for it. Fix the checkout at $wt (install the packages, regenerate the types) and run the batch again."
   exit 1
 fi
