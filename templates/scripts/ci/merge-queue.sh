@@ -77,17 +77,23 @@ wait_minutes=${QUEUE_WAIT_MINUTES:-60}
 flaky_dir=.scratch/queue
 mkdir -p "$flaky_dir" 2>/dev/null || true
 
-# Staying inside GitHub's API budget (5,000 calls an hour, shared by every
-# tool and agent on the account). Ten pull requests, several waits at once
-# and a fast watch loop spent it in an evening; after that every wait
-# failed with a 403 that read as "not green yet". So: waits poll every
-# thirty seconds and never faster; before a round or a wait the queue reads
-# the budget (that call is free) and sleeps until the reset when fewer
-# than QUEUE_RATE_FLOOR calls are left; a 403 is named as the rate limit
-# and stops the queue; and only one queue runs at a time.
+# Staying inside GitHub's API limits. There are two. The hourly quota
+# (5,000 REST calls, 5,000 GraphQL points, each shared by every tool and
+# agent on the account) was spent once by a fast watch loop. The secondary
+# limit, on concurrent and point-heavy GraphQL requests, tripped on a night
+# with seven agents and seven open pull requests while the hourly quota
+# still showed thousands left: gh pr list, gh pr view and gh pr checks all
+# go through GraphQL, and each pass cost seven of them. So the queue makes
+# every call through REST (gh api), which has its own budget and no points;
+# reads one record per pull request per round and caches it; polls every
+# thirty seconds and never faster; reads both budgets before a round (that
+# call is free) and sleeps until the reset when the lower one is under
+# QUEUE_RATE_FLOOR; backs off when GitHub refuses a call (90 seconds, then
+# five minutes, then stops) rather than retrying at once, which makes
+# GitHub extend the block; and runs one queue at a time.
 gh_err=$flaky_dir/gh.err
 hhmm() { date -u -d "@$1" +%H:%M 2>/dev/null || date -u -r "$1" +%H:%M 2>/dev/null || echo "$1"; }
-rate_budget() { gh api rate_limit --jq '.resources.core | "\(.remaining)\t\(.reset)"' 2>/dev/null || true; }
+rate_budget() { gh api rate_limit --jq '[.resources.core, .resources.graphql] | min_by(.remaining) | "\(.remaining)\t\(.reset)"' 2>/dev/null || true; }
 rate_guard() {
   rg=$(rate_budget)
   w=$(rate_wait "$rg" "$(date +%s)" "${QUEUE_RATE_FLOOR:-500}")
@@ -95,13 +101,50 @@ rate_guard() {
   echo "GitHub API budget is low (${rg%%	*} calls left); waiting $((w / 60 + 1)) minute(s) until it resets at $(hhmm "${rg#*	}") UTC."
   sleep "$w"
 }
-# rate_stop: after a gh call whose stderr went to $gh_err, stop plainly
-# when GitHub refused it for the rate limit.
+# rate_stop: after a gh call whose stderr went to $gh_err, back off when
+# GitHub refused it for a rate limit. The hourly quota spent: wait for the
+# reset. The secondary limit: 90 seconds the first time, five minutes the
+# second, stop the third, and never retry at once. rate_ok clears the
+# count after a round that went through.
 rate_stop() {
   [ "$(rate_limit_hit "$(cat "$gh_err" 2>/dev/null)")" = yes ] || return 0
-  rg=$(rate_budget)
-  echo "GitHub API rate limit reached; it resets at $(hhmm "${rg#*	}") UTC. Stopping; run the queue again after that, and never watch a run in a loop of your own."
-  exit 1
+  : > "$gh_err"
+  rg=$(rate_budget); rem=${rg%%	*}
+  if [ "${rem:-1}" = 0 ]; then
+    w=$(rate_wait "$rg" "$(date +%s)" 1)
+    echo "GitHub's hourly API quota is spent; waiting until it resets at $(hhmm "${rg#*	}") UTC."
+    sleep "$w"; return 0
+  fi
+  n=$(cat "$flaky_dir/rate.hits" 2>/dev/null || echo 0); n=$((n + 1)); echo "$n" > "$flaky_dir/rate.hits"
+  case $n in
+    1) w=90 ;;
+    2) w=300 ;;
+    *) echo "GitHub refused three calls for its secondary rate limit (too many concurrent or point-heavy requests from this account); stopping. Run the queue again in ten minutes, one copy, with nothing else polling."; exit 1 ;;
+  esac
+  echo "GitHub refused the call for its secondary rate limit (hit $n of 3); waiting $w seconds, never retrying at once."
+  sleep "$w"
+}
+rate_ok() { rm -f "$flaky_dir/rate.hits" 2>/dev/null || true; }
+
+# Pull request facts through REST, one call per pull request, cached for
+# sixty seconds. pr_field N COL: 1 head ref, 2 head sha, 3 title, 4 draft,
+# 5 mergeable_state, 6 base ref, 7 state. pr_rollup SHA: the check-runs of
+# a commit as one word, none, red, pending or green.
+pr_tsv() {
+  pt_f="$flaky_dir/pr-$1.tsv"
+  pt_age=$(( $(date +%s) - $(stat -c %Y "$pt_f" 2>/dev/null || stat -f %m "$pt_f" 2>/dev/null || echo 0) ))
+  if [ ! -s "$pt_f" ] || [ "$pt_age" -gt 60 ]; then
+    if gh api "repos/{owner}/{repo}/pulls/$1" --jq '[.head.ref, .head.sha, .title, (.draft | tostring), (.mergeable_state // ""), .base.ref, .state] | @tsv' > "$pt_f.tmp" 2>"$gh_err"; then
+      mv "$pt_f.tmp" "$pt_f"
+    else
+      rm -f "$pt_f.tmp" 2>/dev/null; rate_stop
+    fi
+  fi
+  cat "$pt_f" 2>/dev/null || true
+}
+pr_field() { pr_tsv "$1" | cut -f"$2" | tr -d '\r'; }
+pr_rollup() {
+  rest_rollup "$(gh api "repos/{owner}/{repo}/commits/$1/check-runs?per_page=100" --jq '.check_runs[] | (.conclusion // .status)' 2>"$gh_err" || { rate_stop; echo; })"
 }
 
 # One queue at a time. A queue takes .scratch/queue/lock and a second one
@@ -200,8 +243,8 @@ record_flaky() {
   flaky_offenders "$rf_log" 2 | while IFS="$tab" read -r count test prs; do
     [ -n "$test" ] || continue
     grep -qxF "$test" "$flaky_dir/flaky-filed.txt" 2>/dev/null && continue
-    gh issue create --title "Flaky test: $test" --label "bug,state:ready" \
-      --body "This test failed and then passed on retry $count times, on pull requests $prs. The merge queue recorded it. An unreliable test is a bug, not weather: fix it or quarantine it with its own issue, do not re-run it again." >/dev/null 2>&1 \
+    gh api -X POST "repos/{owner}/{repo}/issues" -f title="Flaky test: $test" -f 'labels[]=bug' -f 'labels[]=state:ready' \
+      -f body="This test failed and then passed on retry $count times, on pull requests $prs. The merge queue recorded it. An unreliable test is a bug, not weather: fix it or quarantine it with its own issue, do not re-run it again." >/dev/null 2>&1 \
       && { printf '%s\n' "$test" >> "$flaky_dir/flaky-filed.txt"; echo "Filed an issue for the flaky test $test ($count flakes on $prs)."; }
   done
 }
@@ -257,7 +300,7 @@ worktree_of() {
 # uncommitted files outside .scratch/. The folder is checked when the PR is
 # queued, not after the merge, so a file written minutes before is caught.
 folder_blocks() {
-  fb_branch=$(gh pr view "$1" --json headRefName -q .headRefName 2>/dev/null || true)
+  fb_branch=$(pr_field "$1" 1)
   fb_path=$(worktree_of "$fb_branch")
   [ -n "$fb_path" ] || return 0
   fb_dirty=$(dirty_non_scratch "$(git -C "$fb_path" status --porcelain 2>/dev/null)")
@@ -301,13 +344,12 @@ serial_one() {
   why=$(folder_blocks "$pr"); [ -n "$why" ] || why=$(migration_blocks "$pr")
   if [ -n "$why" ]; then batch_line "$pr" "refused" "$why"; return 0; fi
   git fetch -q origin "$base" "pull/$pr/head"
-  head=$(gh pr view "$pr" --json headRefOid -q .headRefOid)
+  head=$(pr_field "$pr" 2)
+  hb=$(pr_field "$pr" 1)
   merge_base=$(git merge-base "origin/$base" "$head")
   pr_classes=$(classify_paths "$(git diff --name-only "$merge_base" "$head")" "$rules")
   main_classes=$(classify_paths "$(git diff --name-only "$merge_base" "origin/$base")" "$rules")
-  if ! gh pr checks "$pr" >/dev/null 2>"$gh_err"; then
-    rate_stop
-    hb=$(gh pr view "$pr" --json headRefName -q .headRefName 2>/dev/null || true)
+  if [ "$(pr_rollup "$head")" != green ]; then
     run=$(latest_run "$hb"); run_id=${run%%	*}
     rate_stop
     why="not green yet, nothing merged"
@@ -323,15 +365,15 @@ serial_one() {
     return 0
   fi
   if [ "$(needs_rerun "$pr_classes" "$main_classes" "$(rerun_free_classes "$rules")")" = yes ]; then
-    gh pr update-branch "$pr" >/dev/null
-    sync_worktree "$(gh pr view "$pr" --json headRefName -q .headRefName 2>/dev/null || true)"
+    gh api -X PUT "repos/{owner}/{repo}/pulls/$pr/update-branch" >/dev/null 2>"$gh_err" || rate_stop
+    sync_worktree "$hb"
     batch_line "$pr" "updated" "main moved in its classes (PR: ${pr_classes:-none}; main: ${main_classes:-none}), CI runs again"
     return 0
   fi
-  head_branch=$(gh pr view "$pr" --json headRefName -q .headRefName 2>/dev/null || true)
+  head_branch=$hb
   record_flaky "$pr" "" passed
   wait_quiet_main
-  gh pr merge "$pr" --squash >/dev/null
+  gh api -X PUT "repos/{owner}/{repo}/pulls/$pr/merge" -f merge_method=squash >/dev/null 2>"$gh_err" || { rate_stop; batch_line "$pr" "not merged" "GitHub refused the merge: $(head -n 1 "$gh_err" 2>/dev/null)"; return 0; }
   batch_line "$pr" "merged serially" "main moved only outside its classes"
   tidy_worktree "$head_branch"
 }
@@ -375,19 +417,19 @@ if [ "$mode" = drain ]; then
   while [ "$round" -lt "$rounds" ]; do
     round=$((round + 1))
     rate_guard
-    open=$(gh pr list --state open --limit 100 --json number,isDraft,mergeable,statusCheckRollup,baseRefName --jq '
-      .[] | [ .number, .isDraft, .mergeable,
-        ( [ .statusCheckRollup[]? | (.conclusion // .state // "") ] as $s
-          | if ($s | length) == 0 then "none"
-            elif any($s[]; test("FAILURE|ERROR|TIMED_OUT|CANCELLED|ACTION_REQUIRED")) then "red"
-            elif any($s[]; . == "" or test("PENDING|EXPECTED|QUEUED|IN_PROGRESS")) then "pending"
-            else "green" end ),
-        .baseRefName ] | @tsv' 2>"$gh_err" || true)
+    # One REST list, then one metadata call and one check-runs call per
+    # open pull request, each on the REST budget and cached for the round.
+    listed=$(gh api "repos/{owner}/{repo}/pulls?state=open&per_page=100" --jq '.[] | [.number, (.draft | tostring), .head.sha, .base.ref] | @tsv' 2>"$gh_err" || true)
     rate_stop
+    open=$(printf '%s\n' "$listed" | while IFS="$tab" read -r o_num o_draft o_sha o_base; do
+      [ -n "$o_num" ] || continue
+      printf '%s\t%s\t%s\t%s\t%s\n' "$o_num" "$o_draft" "$(mergeable_word "$(pr_field "$o_num" 5)")" "$(pr_rollup "$o_sha")" "$o_base"
+    done)
+    rate_ok
     # A red pull request gets one retry of its failed jobs; a second red,
     # or a conflict, is collected and named when the drain ends.
     for r in $(drain_retry "$open" "$base" "$retried"); do
-      rb=$(gh pr view "$r" --json headRefName -q .headRefName 2>/dev/null || true)
+      rb=$(pr_field "$r" 1)
       rid=$(latest_run "$rb"); rid=${rid%%	*}
       if [ -n "$rid" ] && gh run rerun "$rid" --failed >/dev/null 2>&1; then
         echo "round $round: #$r failed CI; re-running its failed jobs once."
@@ -496,7 +538,7 @@ for pr in $prs; do
   if [ -n "$why" ]; then batch_line "$pr" "refused" "$why"; continue; fi
   git -C "$wt" fetch -q origin "pull/$pr/head" || { batch_line "$pr" "dropped" "could not fetch it"; dropped="$dropped $pr"; continue; }
   head=$(git -C "$wt" rev-parse FETCH_HEAD)
-  title=$(gh pr view "$pr" --json title -q .title 2>/dev/null || echo "PR $pr")
+  title=$(pr_field "$pr" 3); [ -n "$title" ] || title="PR $pr"
   if ! git -C "$wt" merge -q --no-ff --no-edit -m "Merge PR #$pr into $branch: $title" "$head" >/dev/null 2>&1; then
     git -C "$wt" merge --abort >/dev/null 2>&1 || true
     git -C "$wt" reset -q --hard "$good"
@@ -536,7 +578,7 @@ for pr in $prs; do
     continue
   fi
   # Cancel the PR's own CI run; the batch's one run covers it.
-  gh run list --branch "$(gh pr view "$pr" --json headRefName -q .headRefName)" --status in_progress --json databaseId -q '.[].databaseId' 2>/dev/null \
+  gh run list --branch "$(pr_field "$pr" 1)" --status in_progress --json databaseId -q '.[].databaseId' 2>/dev/null \
     | while read -r id; do [ -n "$id" ] && gh run cancel "$id" >/dev/null 2>&1 || true; done
   good=$(git -C "$wt" rev-parse HEAD)
   carried="$carried$pr	$title
@@ -559,18 +601,17 @@ fi
 
 git -C "$wt" push -q -u origin "$branch"
 body=$(batch_pr_body "$carried")
-batch_pr=$(gh pr create --base "$base" --head "$branch" --title "Batch $day: $(printf '%s' "$carried" | wc -l | tr -d ' ') pull requests" --body "$body" --json number -q .number 2>/dev/null \
-  || gh pr create --base "$base" --head "$branch" --title "Batch $day" --body "$body" | sed 's#.*/##')
+batch_pr=$(gh api -X POST "repos/{owner}/{repo}/pulls" -f base="$base" -f head="$branch" -f title="Batch $day: $(printf '%s' "$carried" | wc -l | tr -d ' ') pull requests" -f body="$body" --jq .number 2>"$gh_err") || { rate_stop; echo "Could not open the batch pull request: $(head -n 1 "$gh_err" 2>/dev/null). The branch $branch is pushed; open it by hand or run the batch again."; exit 1; }
 echo "batch PR #$batch_pr opened; waiting for the one full CI run"
 if ! wait_for_run "$batch_pr" "$branch"; then
   echo "The batch run is not green; nothing merged. Fix it on $branch or drop a PR and run again."
   exit 1
 fi
 wait_quiet_main
-gh pr merge "$batch_pr" --merge >/dev/null
+gh api -X PUT "repos/{owner}/{repo}/pulls/$batch_pr/merge" -f merge_method=merge >/dev/null 2>"$gh_err" || { rate_stop; echo "GitHub refused the batch merge: $(head -n 1 "$gh_err" 2>/dev/null). Nothing merged; run the batch again."; exit 1; }
 echo "batch PR #$batch_pr merged into $base with a merge commit"
 for pr in $(printf '%s' "$carried" | cut -f1); do
-  tidy_worktree "$(gh pr view "$pr" --json headRefName -q .headRefName 2>/dev/null || true)"
+  tidy_worktree "$(pr_field "$pr" 1)"
 done
 [ -n "$QUEUE_IN_DRAIN" ] || echo "queue done"
 

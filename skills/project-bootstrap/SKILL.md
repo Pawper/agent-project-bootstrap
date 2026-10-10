@@ -244,8 +244,9 @@ are ready to copy from `${CLAUDE_PLUGIN_ROOT}/templates/`:
 - Later: the plugin-owned copies go stale as the plugin moves on. `scripts/sync/sync-templates.sh` in the plugin reports which differ or are missing and, with `--apply`, refreshes them on a branch for a pull request. The session brief says when they are out of date.
 - Step 10: `.claude/project-drive.json`; the skill and its scripts come from the plugin; the drive issue is filed with `gh issue create --title Drive --label drive,state:parked`
 
-Copy them into the new repository, replace every CAPITALIZED placeholder, run `sh scripts/board.sh OWNER OWNER/REPO`,
-run `sh scripts/protect-main.sh` for branch protection, switch on the board's built-in workflows by hand (the one
+Copy them into the new repository, replace every CAPITALIZED placeholder, run `sh scripts/board.sh OWNER OWNER/REPO`
+(it prints the board's address: put that link in your final message to the owner, since the board is the status
+report and nobody finds it by hand), run `sh scripts/protect-main.sh` for branch protection, switch on the board's built-in workflows by hand (the one
 setting with no API), and build the status page once with `sh status/build.sh`. Adapt a copied template with `sed`
 or a short script, never by rewriting the whole file: the Write tool refuses to overwrite a file it has not read,
 and a rewrite loses the template's own comments, which are the reasons for its lines. When the project is not on GitHub, say so, use section 0, and keep the pure parts of the scripts.

@@ -100,6 +100,33 @@ drain_attention() {
     }' | sort -n
 }
 
+# rest_rollup WORDS
+# WORDS is one check-run outcome per line as REST reports it: a conclusion
+# (success, failure, neutral, cancelled, timed_out, action_required,
+# skipped, stale) or, while the run is not complete, its status (queued,
+# in_progress, waiting, pending). Print the one word the drain reads:
+# none, red, pending or green.
+rest_rollup() {
+  printf '%s\n' "$1" | tr -d '\r' | tr 'A-Z' 'a-z' | awk '
+    NF == 0 { next }
+    { n++ }
+    /failure|timed_out|cancelled|action_required|startup_failure/ { red = 1 }
+    /queued|in_progress|waiting|pending|requested/ { pend = 1 }
+    END { if (n == 0) print "none"; else if (red) print "red"; else if (pend) print "pending"; else print "green" }'
+}
+
+# mergeable_word STATE
+# STATE is REST's mergeable_state: clean, unstable, has_hooks, behind,
+# blocked, dirty, draft, unknown. Print the word the drain reads:
+# CONFLICTING for dirty, UNKNOWN for unknown or empty, MERGEABLE otherwise.
+mergeable_word() {
+  case $(printf '%s' "$1" | tr 'A-Z' 'a-z') in
+    dirty) echo CONFLICTING ;;
+    ''|unknown) echo UNKNOWN ;;
+    *) echo MERGEABLE ;;
+  esac
+}
+
 # drain_hold GREEN WAITING
 # Print "yes" when the drain should wait before merging: one or two green
 # pull requests would merge serially while WAITING others are still

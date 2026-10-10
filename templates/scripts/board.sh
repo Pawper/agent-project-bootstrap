@@ -39,9 +39,18 @@ fi
 gh project link "$number" --owner "$owner" --repo "$repo" >/dev/null 2>&1 || true
 echo "linked to $repo"
 
+# The board's address, so the person who asked for it can open it. The API
+# gives it; when that read fails, the user form is the one a personal
+# account gets.
+url=$(gh project view "$number" --owner "$owner" --format json --jq .url 2>/dev/null || true)
+[ -n "$url" ] || url="https://github.com/users/$owner/projects/$number"
+
 cat <<EOF
 
-Done. Two things are left to do by hand:
+Board: $url
+Give that link to the owner; it is the status report, and nobody will find it by hand.
+
+Done. Two things are left to do by hand, both on that page:
 1. Open the board, choose the Workflows tab, and switch on four built-in workflows:
    - Auto-add to project: repository this one, filter "is:issue is:open"
    - Item closed: set Status to Done

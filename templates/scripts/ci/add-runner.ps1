@@ -28,7 +28,10 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
   throw "Run this from an elevated PowerShell; installing a service needs it. From any shell: Start-Process powershell -Verb RunAs -Wait -ArgumentList '-ExecutionPolicy Bypass -File scripts\ci\add-runner.ps1 -Name $Name'"
 }
 
-$repo = (gh repo view --json nameWithOwner --jq .nameWithOwner).Trim()
+# The repository name from the git remote, not from the API: a GraphQL
+# budget that is spent must not stop a runner install.
+$remote = (git remote get-url origin).Trim()
+if ($remote -match 'github\.com[:/]([^/]+)/([^/]+?)(\.git)?$') { $repo = "$($Matches[1])/$($Matches[2])" } else { throw "Could not read owner/repo from the origin remote: $remote" }
 if (-not $Root) { $Root = "C:\actions-runner-" + ($repo -split "/")[1] }
 $token = (gh api -X POST "repos/$repo/actions/runners/registration-token" --jq .token).Trim()
 $release = gh api repos/actions/runner/releases/latest | ConvertFrom-Json
