@@ -381,6 +381,16 @@ eq "closing a PR with no comment" "gh pr close" "$(pr_close_reason 'gh pr close 
 eq "closing with a comment is fine" "" "$(pr_close_reason 'gh pr close 41 --comment "replaced by #52"')"
 eq "closing with -c is fine" "" "$(pr_close_reason 'gh pr close 41 -c "duplicate of #40"')"
 
+printf '\n# long_command_reason\n'
+eq "a short titled command is fine" "" "$(long_command_reason 'git status' 'Show the working tree')"
+eq "no description is named" "no description" "$(long_command_reason 'git status' '')"
+eq "a whitespace description is no description" "no description" "$(long_command_reason 'git status' '  ')"
+eq "too many lines is named by count" "14 lines" "$(long_command_reason "$(seq 1 14 | sed 's/^/echo /')" 'Echo fourteen lines')"
+eq "too many characters is named by count" "1200 characters" "$(long_command_reason "$(head -c 1200 /dev/zero | tr '\0' 'x')" 'A long one')"
+eq "the limits can be set" "3 lines" "$(long_command_reason 'a
+b
+c' 'Three' 2)"
+
 printf '\n# daemon_stop_reason\n'
 eq "gradlew --stop is refused" "gradlew --stop" "$(daemon_stop_reason './gradlew --stop')"
 eq "the Windows wrapper too" "gradlew --stop" "$(daemon_stop_reason 'cd android && .\gradlew.bat --stop')"

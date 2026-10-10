@@ -11,6 +11,18 @@ here=$(dirname "$0")
 input=$(cat)
 cmd=$(json_field "$input" command)
 [ -n "$cmd" ] || exit 0
+desc=$(json_field "$input" description)
+
+long_hit=$(long_command_reason "$cmd" "$desc")
+case "$long_hit" in
+  "") ;;
+  "no description")
+    printf '%s\n' "Blocked a Bash call with no description, because the task window shows the raw command instead of a title; add a short description saying what the command does." >&2
+    exit 2 ;;
+  *)
+    printf '%s\n' "Blocked a Bash call of $long_hit, because a program pasted into the command fills the task window with its source and has no name; write it to .scratch/NAME.sh (or .py) with the Write tool, run it as \`sh .scratch/NAME.sh\`, and give the call a one-line description." >&2
+    exit 2 ;;
+esac
 
 if [ -n "$(pr_close_reason "$cmd")" ]; then
   printf '%s\n' "Blocked \`gh pr close\` because a closed pull request needs an ending; add \`--comment\` saying why or what replaced it, or run \`sh scripts/worktrees.sh close PR \"reason\"\`, which also archives the branch and removes its worktree." >&2
