@@ -21,6 +21,16 @@ permissions:
   contents: read
   issues: write
 
+# RUN_SHELL is the shell every step here runs in. On hosted runners it is
+# "bash". On a Windows self-hosted runner it must be Git's bash by its
+# short path, because "bash" and "sh" on the runner's service account
+# resolve to the WSL stub and every step fails:
+#   'C:\PROGRA~1\Gitinash.exe --noprofile --norc -eo pipefail {0}'
+# Keep it at the workflow level; a step-level shell cannot use expressions.
+defaults:
+  run:
+    shell: RUN_SHELL
+
 jobs:
   classify:
     runs-on: RUNS_ON
@@ -31,7 +41,6 @@ jobs:
         with:
           fetch-depth: 0
       - id: classes
-        shell: sh
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             base="${{ github.event.pull_request.base.sha }}"
@@ -158,7 +167,6 @@ jobs:
     runs-on: RUNS_ON
     steps:
       - name: Report once for every class check that ran
-        shell: sh
         run: |
           failed=0
           for pair in "classify:${{ needs.classify.result }}" "app:${{ needs.app.result }}" "data:${{ needs.data.result }}" "docs:${{ needs.docs.result }}" "spec-check:${{ needs.spec-check.result }}" "setup-check:${{ needs.setup-check.result }}" "shared-check:${{ needs.shared-check.result }}" "numbering-check:${{ needs.numbering-check.result }}" "line-endings:${{ needs.line-endings.result }}" "status-page:${{ needs.status-page.result }}"; do
@@ -176,10 +184,10 @@ jobs:
     # fallback: a job on self-hosted runners waits while they are offline,
     # and the hourly runner-watch workflow says so. An organization can put
     # the runners in a group with a hosted fallback instead.
-    # On a self-hosted Windows runner, copy the job-level default shell from
-    # runner-check.yml (Git's bash by path), keep PowerShell steps on
-    # "shell: pwsh", and never put an expression in "shell:". Run
-    # scripts/ci/runner-doctor.sh on the machine first.
+    # On a self-hosted Windows runner, RUN_SHELL at the top of this file is
+    # Git's bash by path; a PowerShell step says "shell: powershell" (not
+    # pwsh, which a Store install hides from the service); never put an
+    # expression in "shell:". Run scripts/ci/runner-doctor.sh first.
     if: github.event_name == 'push'
     runs-on: RUNS_ON
     steps:
@@ -196,7 +204,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        shell: sh
         run: |
           open=$(gh issue list --label ci-red --state open --json number -q length)
           if [ "$open" = "0" ]; then
@@ -207,3 +214,20 @@ jobs:
           else
             echo "A ci-red issue is already open; not opening another."
           fi
+
+  report-green:
+    # Main went green again: close the red-main issue with a comment, so it
+    # does not outlive its cause and the audit stops mentioning it.
+    needs: full
+    if: always() && github.event_name == 'push' && needs.full.result == 'success'
+    runs-on: RUNS_ON
+    steps:
+      - name: Close the red-main issue now that main is green
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          for n in $(gh issue list --label ci-red --state open --json number -q '.[].number'); do
+            gh issue close "$n" --comment "Main is green again: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}. Closed by CI."
+            echo "closed #$n"
+          done

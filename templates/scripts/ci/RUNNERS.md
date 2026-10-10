@@ -6,7 +6,19 @@ A runner that fails quietly costs more than a slow one: every check sits queued 
 
 A runner started by hand in a terminal stops when the terminal closes, the user logs out, or the machine restarts, and nothing says so. Install it as a Windows service instead. `scripts/ci/add-runner.ps1 -Name NAME` does the whole thing: registration token, download, configuration with the labels the workflows expect, service install and start. A runner installed by hand can be moved over with `config.cmd remove`, then the script.
 
-The service runs as NETWORK SERVICE, which sees only the machine PATH, not your user PATH. Git, Node and gh must be on the machine PATH. The doctor checks that.
+The script needs an elevated PowerShell, because installing a service does, and it refuses to run without one. An agent can launch the elevated shell and the owner clicks the prompt once:
+
+```powershell
+Start-Process powershell -Verb RunAs -Wait -ArgumentList '-ExecutionPolicy Bypass -File scripts\ci\add-runner.ps1 -Name build-2'
+```
+
+Each repository's runners live under their own root, `C:\actions-runner-<repo>`, so a second project's runner never lands inside the first project's runner folder; `-Root` overrides it.
+
+The service runs as NETWORK SERVICE, which sees only the machine PATH, not your user PATH. Git, Node and gh must be on the machine PATH. The doctor checks that. The doctor also knows when every runner on the machine is a service: the two warnings that only apply to a runner started by hand (the `NoDefaultCurrentDirectoryInExePath` variable and the execution policy) become notes.
+
+## The shell every step runs in
+
+On a Windows runner the service account's `bash` and `sh` resolve to the WSL stub, and every step fails before it starts. `ci.yml` and `queue-drain.yml` carry a `RUN_SHELL` placeholder in their workflow-level `defaults.run.shell`; on Windows runners set it to Git's bash by its short path, `'C:\PROGRA~1\Git\bin\bash.exe --noprofile --norc -eo pipefail {0}'`, and on hosted runners to `bash`. A PowerShell step says `shell: powershell`, never `pwsh`: PowerShell 7 from the Store lives in a user folder the service cannot see. The gh-only workflows (audit, board sync, state label, runner watch) stay on hosted runners and keep `shell: sh`.
 
 ## Run two
 

@@ -31,7 +31,9 @@ jobs:
     timeout-minutes: 100
     defaults:
       run:
-        shell: bash
+        # RUN_SHELL as in ci.yml: "bash" on a hosted or Linux runner, Git's
+        # bash by short path on a Windows one.
+        shell: RUN_SHELL
     steps:
       - uses: actions/checkout@v4
         with:

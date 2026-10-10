@@ -883,6 +883,23 @@ eq "two pull requests that both took D55" "D55" "$(duplicate_ids "$brief
 eq "the next free decision" "D58" "$(next_free_id "$(id_definitions "$brief" D)" D)"
 eq "the first decision" "D1" "$(next_free_id '' D)"
 
+printf '\n# env-lib\n'
+. "$root/templates/scripts/env-lib.sh"
+eq "a missing key is appended" "A=1
+B=2" "$(env_set 'A=1' B 2)"
+eq "an existing key is replaced in place" "# db
+A=9
+B=2" "$(env_set '# db
+A=1
+B=2' A 9)"
+eq "an export prefix survives" "export A=9" "$(env_set 'export A=1' A 9)"
+eq "a key that is a prefix of another is not touched" "AB=1
+A=9" "$(env_set 'AB=1' A 9)"
+eq "empty text gets the one line" "A=9" "$(env_set '' A 9)"
+eq "a password is the asked length" "32" "$(random_password 32 | tr -d '\n' | wc -c | tr -d ' ')"
+eq "a password is letters and digits only" "0" "$(random_password 32 | tr -d 'A-Za-z0-9\n' | wc -c | tr -d ' ')"
+eq "two passwords differ" "no" "$([ "$(random_password)" = "$(random_password)" ] && echo yes || echo no)"
+
 printf '\n# template refresh\n'
 . "$root/scripts/sync/sync-lib.sh"
 owned='# comment

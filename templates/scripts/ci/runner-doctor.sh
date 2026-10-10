@@ -11,6 +11,15 @@ here=$(dirname "$0")
 
 warns=0
 say() { echo "$1  $2"; [ "$1" = warn ] && warns=$((warns + 1)); }
+note() { echo "note  $1"; }
+
+# Are the runners on this machine services? A service never inherits a
+# shell's environment or policy, so two of the checks below are notes,
+# not things to fix, when every runner here is one.
+services=0
+if [ -n "$WINDIR" ]; then
+  services=$(sc query type= service state= all 2>/dev/null | grep -ci 'SERVICE_NAME: actions.runner' || true)
+fi
 
 # 1. Which bash a step would get.
 bash_path=$(command -v bash 2>/dev/null || echo "")
@@ -47,7 +56,9 @@ done
 
 # 2b. A variable this shell sets that a runner must never inherit.
 ev=$(exepath_verdict "$NoDefaultCurrentDirectoryInExePath")
-if [ "$ev" = warn ]; then
+if [ "$ev" = warn ] && [ "${services:-0}" -gt 0 ]; then
+  note "this shell sets NoDefaultCurrentDirectoryInExePath=1, which does not reach the $services runner service(s) on this machine; it would matter only for a runner started by hand from this shell"
+elif [ "$ev" = warn ]; then
   say warn "this shell sets NoDefaultCurrentDirectoryInExePath=1 (Git Bash does). Never start run.cmd from it: every job would inherit it, and cmd would refuse to run gradlew.bat or any program from the current folder by its bare name. Install the runner as a service, or start it with: env -u NoDefaultCurrentDirectoryInExePath cmd //c run.cmd"
 else
   say ok "NoDefaultCurrentDirectoryInExePath is not set in this shell"
@@ -56,7 +67,22 @@ fi
 # 3. PowerShell execution policy.
 if command -v powershell >/dev/null 2>&1; then
   pol=$(powershell -NoProfile -Command 'Get-ExecutionPolicy -List | ForEach-Object { "$($_.Scope)=$($_.ExecutionPolicy)" }' 2>/dev/null | tr '\r\n' '  ')
-  say "$(policy_verdict "$pol")" "execution policy: $pol$( [ "$(policy_verdict "$pol")" = warn ] && printf ' (a machine policy of Restricted or AllSigned blocks scripts run outside a pwsh step)')"
+  if [ "$(policy_verdict "$pol")" = warn ] && [ "${services:-0}" -gt 0 ]; then
+    note "execution policy: $pol (a service runner starts each PowerShell step with its own policy, so this matters only for scripts run by hand)"
+  else
+    say "$(policy_verdict "$pol")" "execution policy: $pol$( [ "$(policy_verdict "$pol")" = warn ] && printf ' (a machine policy of Restricted or AllSigned blocks scripts run outside a powershell step)')"
+  fi
+fi
+
+# 3b. PowerShell 7 from the Store lives in the user's WindowsApps folder,
+# which the service cannot see, so a "shell: pwsh" step fails there.
+if [ -n "$WINDIR" ]; then
+  pw=$(command -v pwsh 2>/dev/null || echo "")
+  case "$pw" in
+    "") note "pwsh: not installed; workflow steps use \"shell: powershell\", which is always there" ;;
+    *WindowsApps*|*windowsapps*) say warn "pwsh: $pw is a Store install in a user folder the runner service cannot see; use \"shell: powershell\" in workflow steps, or install PowerShell 7 with the MSI" ;;
+    *) say ok "pwsh: $pw" ;;
+  esac
 fi
 
 # 4. The runner, as GitHub sees it.
@@ -74,4 +100,4 @@ else
 fi
 
 echo
-if [ "$warns" -eq 0 ]; then echo "Everything a run needs is in place."; else echo "$warns thing(s) to fix before a run on this machine."; exit 1; fi
+if [ "$warns" -eq 0 ]; then echo "Everything a run needs is in place.${services:+ ($services runner service(s) found.)}"; else echo "$warns thing(s) to fix before a run on this machine."; exit 1; fi

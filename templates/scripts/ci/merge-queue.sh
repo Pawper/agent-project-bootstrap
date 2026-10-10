@@ -183,6 +183,10 @@ record_flaky() {
   rf_day=$(date -u +%Y-%m-%d)
   if [ "$3" = failed ]; then
     tests=$(failed_tests_from_log "$(gh run view "$2" --log-failed 2>/dev/null)")
+    # A class job that failed with no test named (a lost log, a runner
+    # hiccup) is recorded by its job name, so a job that fails and then
+    # passes on re-run is the same flake signal as a test.
+    [ -n "$tests" ] || tests=$(jobs_of "$2" | awk -F'\t' '$3 == "failure" { print "job:" $1 }')
     [ -n "$tests" ] && echo "Failing tests: $(printf '%s\n' "$tests" | head -n 5 | tr '\n' ';' | sed 's/;$//')"
   else
     tests=$(printf '%s\n' "$rf_log" | awk -F'\t' -v pr="$1" '$2 == pr && $4 == "failed" { print $3 }' | awk '!seen[$0]++')

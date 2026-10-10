@@ -9,9 +9,9 @@
 A Claude Code plugin for projects where many coding agents work at once.</p>
 
 <p align="center">
-  <a href="https://github.com/Pawper/bitblitzin-bootstrap/releases"><img alt="Version 0.7.1" src="https://img.shields.io/badge/version-0.7.1-110F17?labelColor=110F17&color=FFB347"></a>
+  <a href="https://github.com/Pawper/bitblitzin-bootstrap/releases"><img alt="Version 0.7.2" src="https://img.shields.io/badge/version-0.7.2-110F17?labelColor=110F17&color=FFB347"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-110F17?labelColor=110F17&color=FF6EC7"></a>
-  <a href="#tests"><img alt="473 tests" src="https://img.shields.io/badge/tests-473%20passed-110F17?labelColor=110F17&color=3FD6FF"></a>
+  <a href="#tests"><img alt="481 tests" src="https://img.shields.io/badge/tests-481%20passed-110F17?labelColor=110F17&color=3FD6FF"></a>
   <a href="https://bitblitzin.com/bootstrap"><img alt="bitblitzin.com/bootstrap" src="https://img.shields.io/badge/site-bitblitzin.com%2Fbootstrap-110F17?labelColor=110F17&color=A8E36B"></a>
 </p>
 
@@ -137,7 +137,7 @@ This is what a person does with the plugin, from install to the first feature ag
 1. **Install.** In a Claude Code session, add the marketplace and install the plugin with the two commands above. Pick project scope so every collaborator gets the hooks. From this moment the ten hooks are live: deletes, forced pushes, full test sweeps, direct edits to generated pages, issues without a State label, agent dispatches without a fitting model, merges around the queue, the serial merge pattern, pull requests closed without a reason and detached worktrees, and a shared build daemon stopped on a machine that hosts a runner are refused with one sentence each.
 2. **Run the skill.** In a new or struggling repository, say `/project-bootstrap set this project up for many agents`. The skill looks at the repository first, then asks a short survey for what it could not tell: new or existing project, where issues and CI live, which agent runtimes, the one-file test command, which pages are generated, the spec tool, runners, and where the work folder goes. It records the answers under a Stack heading in CLAUDE.md, walks the homes table, writes the rules into CLAUDE.md and AGENTS.md, and copies the templates in, adapted to the answers. Replace every capitalized placeholder that is left.
 3. **Create the board and labels.** Run `sh scripts/board.sh OWNER OWNER/REPO`. It creates the seven state labels, the project board, its State field with the seven values, and links the repository.
-4. **Two settings GitHub cannot script.** In the board's Workflows tab, switch on the four built-in workflows listed under The project board. In branch protection on main, require exactly one check, `CI passed`, and leave "require branches to be up to date" off, as described under Branch protection on main.
+4. **Branch protection, in one command.** `sh scripts/protect-main.sh` sets the rules the queue needs: one required check, `CI passed`, up to date off, a pull request required. Then the one setting GitHub cannot script: in the board's Workflows tab, switch on the four built-in workflows listed under The project board.
 5. **Build the status page once.** Run `sh status/build.sh` and commit STATUS.md. From here on CI fails any PR that leaves the page stale, and the hook refuses hand edits to it.
 6. **Write the constitution and the first spec.** Fill in `specs/constitution.md` once, then copy `specs/001-FEATURE/` to `specs/<feature>/` for the first feature. If you use spec kit, run it inside that folder; the templates are plain Markdown and do not depend on it. From here on CI fails any PR that changes `src/` without a change in a spec folder.
 7. **Open the owner console.** Run `node "$CLAUDE_PLUGIN_ROOT/console/cli.js" console` and open the page it names. Fill in `console/services.json` for the systems the project really talks to; the launch to-do shows what is left and clears on its own as settings land.
@@ -236,6 +236,7 @@ All of them live in `templates/` and are meant to be copied into the project roo
 - `merge-queue.sh --drain`: merge everything that is green, round after round, batching when more than two are ready, until nothing is left or its bounds are reached. The answer to "merge what is ready", so nobody writes a loop. A red pull request gets one retry of its failed jobs; one that conflicts or fails twice is named at the end and the drain exits non-zero, so the agent running it is woken instead of a log line scrolling past. The queue also refuses a pull request that adds a migration its own manual still calls "Not yet run".
 - `scripts/next-number.sh KIND` and `.claude/numbering.txt`: reserve the next free number for a file that must keep its order, such as a migration, across main and every open pull request, so two agents never take the same one. For anything that need not run in order, the rule is the issue number instead.
 - `scripts/ci/numbering-check.sh` and `task-files.txt`: a CI job that fails when two numbered files share a number, when a file such as a product brief defines one decision number twice, and when a change adds a task to a task file with a running number instead of its issue number. Running task numbers were the biggest source of merge conflicts on one busy day; two parallel pull requests both taking D55 was found only by comparing branches by hand. An ID kind is a three-field line in `.claude/numbering.txt`, such as `decision docs/product-brief.md D`, and `next-number.sh decision` reads that file on main and on every open pull request.
+- `scripts/protect-main.sh`: branch protection on main in one call, the way the queue needs it. `scripts/supabase-create.sh NAME`: the app's Supabase project in one approved command; it generates the database password, writes it and the project reference into `.env` and nowhere else, and prints no secret. `scripts/env-lib.sh` holds the pure helpers both use.
 - `.gitattributes`: `CHANGELOG.md`, a file a tool writes, merges as a union so two releases that each append a line keep both. No hand-edited page gets that: the conflict is the one signal that two pull requests are appending to a shared page. One project gave `tasks.md` a union merge and reached 64 appends to one file in a week before anyone noticed; tasks are issues, and a spec tool's `tasks.md` is written once at planning and not touched again.
 - Nothing appended to pass a check. A pull request names its spec in its body (`Spec: specs/<feature>`) and changes the spec only when the design changed; `setup-paths.txt` lists only files whose change is a step a person takes (a migration, a variable, a container), not manifests or workflows; and the `!rerun-free` line in `classes.txt` names the classes (`docs`, `specs`, `status`) whose moves on main never cost a green pull request a re-run. Before this, three checks each rewarded appending a line to a shared file, and the queue then re-ran every green pull request for it, one at a time.
 - `scripts/ci/RUNNERS.md`, `add-runner.ps1` and `.github/workflows/runner-watch.yml`: install each self-hosted runner as a Windows service, run at least two, keep the runner's environment clean; the script registers one more runner as a service in one command; the hourly watch, on a hosted runner, comments on the audit issue when a runner is offline, when fewer than two are online, or when a run has sat queued for more than ten minutes.
@@ -332,7 +333,7 @@ To run it: `/loop 10m /project-drive` in a session while work is in flight, `/lo
 
 ## Branch protection on main
 
-Branch protection is set by hand in the repository's settings, under Branches. GitHub asks the owner to confirm their access before it saves the rule. Set it like this:
+`sh scripts/protect-main.sh` sets it in one API call, and can be run again at any time; a private repository on a free plan has no branch protection, and the script says so. What it sets, and why:
 
 - **Require status checks to pass**, and require exactly one check: `CI passed`. Never add the per-class jobs. They are skipped on purpose when a change does not touch their class, and a required check that never reports blocks the merge forever. The `CI passed` job waits for whichever class jobs ran and reports once, so it is the only check main needs.
 - **Leave "require branches to be up to date" off.** The merge queue merges a green pull request without a re-run when main changed only outside the pull request's classes. That rule depends on being allowed to merge a branch that is behind main. With the setting on, every merge to main would force every open pull request to update and run again, which is the queue that waits an hour per change this plugin exists to avoid.
@@ -402,7 +403,7 @@ ok    no overlap merges
 ok    overlap reruns
 ok    ci on main reruns
 
-473 passed, 0 failed
+481 passed, 0 failed
 ```
 
 ## License, privacy and terms
