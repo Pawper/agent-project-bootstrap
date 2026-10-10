@@ -179,6 +179,18 @@ rate_line() {
     }'
 }
 
+# today_line DATE_TEXT [ZONE]
+# The brief's date line: "Today: Friday 2026-10-09, 22:00 PDT. Dates in
+# this repository are America/Los_Angeles days; gh and runner timestamps
+# are UTC." ZONE is the configured IANA name; when it is empty or the
+# TIMEZONE placeholder, the line says the dates are the owner's local day.
+today_line() {
+  case "$2" in
+    ''|TIMEZONE) printf 'Today: %s. Dates in this repository are the owner'\''s local day; gh and runner timestamps are UTC, convert before writing one.\n' "$1" ;;
+    *) printf 'Today: %s. Dates in this repository are %s days; gh and runner timestamps are UTC, convert before writing one.\n' "$1" "$2" ;;
+  esac
+}
+
 # project_slug PATH
 # The folder name Claude Code gives a project under ~/.claude/projects:
 # every character that is not a letter or a digit becomes "-", so

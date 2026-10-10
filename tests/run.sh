@@ -225,6 +225,8 @@ eq "pr line, green" "#41 Add retries to the client (mergeable, CI green)" "$(pr_
 eq "pr line, conflicts and a failure" "#42 Fix the date parser (has conflicts, CI 1 failed)" "$(pr_line "$(sed -n 2p "$fx/pr-list.tsv")")"
 eq "pr line, pending" "#45 Rename the status page (mergeability unknown, CI 2 pending)" "$(pr_line "$(sed -n 3p "$fx/pr-list.tsv")")"
 eq "pr line, no CI" "#47 Docs only (mergeable, no CI yet)" "$(pr_line "$(sed -n 4p "$fx/pr-list.tsv")")"
+eq "today names the zone" "Today: Friday 2026-10-09, 22:00 PDT. Dates in this repository are America/Los_Angeles days; gh and runner timestamps are UTC, convert before writing one." "$(today_line 'Friday 2026-10-09, 22:00 PDT' America/Los_Angeles)"
+eq "today without a zone says local" "Today: Friday 2026-10-09, 22:00 PDT. Dates in this repository are the owner's local day; gh and runner timestamps are UTC, convert before writing one." "$(today_line 'Friday 2026-10-09, 22:00 PDT' TIMEZONE)"
 eq "a Windows path becomes Claude Code's project slug" "C--Users-me-Documents-GitHub-repo" "$(project_slug 'C:\Users\me\Documents\GitHub\repo')"
 eq "a Unix path becomes the slug too" "-Users-me-repo" "$(project_slug '/Users/me/repo')"
 eq "log written an hour ago is recent" "yes" "$(log_is_recent 1000000 1003600)"

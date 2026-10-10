@@ -180,7 +180,7 @@ diagnose() {
 # failed earlier on this PR are marked passed, which is what a flake is.
 record_flaky() {
   rf_log=""; [ -f "$flaky_dir/flaky.tsv" ] && rf_log=$(cat "$flaky_dir/flaky.tsv")
-  rf_day=$(date -u +%Y-%m-%d)
+  rf_day=$(date +%Y-%m-%d)
   if [ "$3" = failed ]; then
     tests=$(failed_tests_from_log "$(gh run view "$2" --log-failed 2>/dev/null)")
     # A class job that failed with no test named (a lost log, a runner
@@ -450,7 +450,7 @@ fi
 # one batch to the next. Each package's node_modules is linked from the
 # main checkout when the worktree has none, so nothing is installed twice.
 git fetch -q origin "$base"
-day=$(date -u +%Y-%m-%d)
+day=$(date +%Y-%m-%d)  # the owner's local day, like every date in the repository
 n=1
 branch=$(batch_branch_name "$day" "$n")
 while git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; do

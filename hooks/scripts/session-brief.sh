@@ -21,11 +21,13 @@ root=${CLAUDE_PROJECT_DIR:-$(json_field "$input" cwd)}
 max_lines=40
 queue_glob=""
 memory_dir=""
+timezone=""
 config=".claude/session-brief.json"
 if [ -f "$config" ]; then
   cfg=$(cat "$config")
   queue_glob=$(json_field "$cfg" queueLogGlob)
   memory_dir=$(json_field "$cfg" memoryDir)
+  timezone=$(json_field "$cfg" timezone)
   n=$(json_number "$cfg" maxLines)
   [ -n "$n" ] && max_lines=$n
 fi
@@ -52,6 +54,11 @@ out="Session brief. Reply from this first. For where each issue and pull request
 "
 add() { out="$out$1
 "; }
+
+# Today, in the owner's local time. The hook runs on the owner's machine,
+# so a plain date is local; gh output and runner logs are UTC, and an
+# agent that dates things from them writes tomorrow's date all evening.
+add "$(today_line "$(date '+%A %Y-%m-%d, %H:%M %Z')" "$timezone")"
 
 have_git=no
 if command -v git >/dev/null 2>&1 && git rev-parse --git-dir >/dev/null 2>&1; then have_git=yes; fi

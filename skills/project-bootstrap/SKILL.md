@@ -27,12 +27,14 @@ default for each. In Claude Code use the question tool so the person can pick ra
 | Which pages are generated? | The generated-page hook refuses edits to them | `.claude/generated-pages.txt` |
 | Spec tool: by hand, GitHub's spec-kit, something else, none yet? (sibling) | Step 7 and the spec check assume a folder per feature; the tool that fills it is the person's choice | Whether to run a generator inside `specs/<feature>/` or copy the skeleton |
 | Where do CI jobs run: hosted, or the studio's self-hosted runners? (sibling) | Every job in ci.yml carries the `RUNS_ON` placeholder; a personal account has no runner groups, so there is no hosted fallback and the runner watch is what speaks when the runners are offline | `RUNS_ON` in `.github/workflows/ci.yml`: `ubuntu-latest`, or `[self-hosted, windows]` as both studio projects use; the gh-only workflows stay hosted |
+| What is the owner's time zone? | Every dated line in the repository (decisions, the manual's migrations table, stubs, the notice, memory notes) is the owner's local day; gh output, runner logs and `date -u` are UTC, and an agent that dates from them writes tomorrow's date all evening | The `TIMEZONE` placeholder in the Stack section and in `.claude/session-brief.json`; the brief prints today in it |
 | Where will the work folder live, and where is it backed up? | Step 6 is outside the repo and nothing can create it for you | The path named in CLAUDE.md |
 | Is there a manual already, and where? (sibling) | The setup check asks for a line in the manual whenever a setup file changes; it must point at the one the project keeps | The `manual PATH` line in `scripts/ci/setup-paths.txt`; the manual row in the homes table |
 | Which routine tasks and limits does this project really have? (sibling) | The console's FAQ must answer this project's questions, not the sample's | The `faq.required` ids in `console/services.json` |
 
 Record the answers at the top of CLAUDE.md under a heading "Stack", three or four lines, so the next agent does not
-ask again. If the answers match the preferred stack, say so in one line and go on. If they do not, use section 0.
+ask again. The time zone goes there as "Dates are the owner's local day, America/Los_Angeles" (or whichever), and any
+relative date an agent turns absolute, in a note or a memory file, is turned into that calendar's day, not UTC's. If the answers match the preferred stack, say so in one line and go on. If they do not, use section 0.
 
 ## 0. The stack this was designed for, and adapting to another
 
