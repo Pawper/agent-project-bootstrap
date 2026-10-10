@@ -8,12 +8,32 @@ here_lib=$(dirname "$0")
 
 ALL_STATE_LABELS="state:ready state:in-progress state:waiting-on-owner state:waiting-on-service state:parked state:dated state:after-launch state:blocked"
 
+# gh_project ARGS...: the gh project command, with a retry when GitHub
+# refuses the call. Projects v2 has no REST API, so these calls spend
+# GraphQL points and trip its secondary limit first; a burst of issue
+# closes once started ten of them in two seconds. On a refusal, wait 30,
+# 60 then 120 seconds and say which limit it was, then give up with that
+# message rather than gh's "unknown owner type".
+gh_project() {
+  gp_try=0
+  while :; do
+    if gp_out=$(gh project "$@" 2>&1); then printf '%s\n' "$gp_out"; return 0; fi
+    if [ "$(board_refusal "$gp_out")" = no ]; then printf '%s\n' "$gp_out" >&2; return 1; fi
+    gp_try=$((gp_try + 1))
+    case $gp_try in 1) gp_w=30 ;; 2) gp_w=60 ;; 3) gp_w=120 ;; *)
+      echo "GitHub refused the board call for its rate limit three times (gh reports it as \"unknown owner type\"); giving up. The nightly sync will catch up." >&2; return 1 ;;
+    esac
+    echo "GitHub refused the board call for its rate limit (gh says \"unknown owner type\"); waiting $gp_w seconds." >&2
+    sleep "$gp_w"
+  done
+}
+
 # board_load PROJECT OWNER
 # Reads the ids the other functions need into BOARD_* variables.
 board_load() {
   BOARD_NUMBER=$1
   BOARD_OWNER=$2
-  BOARD_ID=$(gh project view "$1" --owner "$2" --format json --jq .id)
+  BOARD_ID=$(gh_project view "$1" --owner "$2" --format json --jq .id)
   BOARD_STATE_FIELD=$(board_fields '.fields[] | select(.name == "State") | .id')
   BOARD_STATUS_FIELD=$(board_fields '.fields[] | select(.name == "Status") | .id')
   [ -n "$BOARD_STATE_FIELD" ] || { echo "Project $1 has no State field; run sh scripts/board.sh first." >&2; exit 1; }
@@ -22,7 +42,7 @@ board_load() {
 # board_fields FILTER: the field list through gh's built-in jq, so nothing
 # beyond gh itself is needed.
 board_fields() {
-  gh project field-list "$BOARD_NUMBER" --owner "$BOARD_OWNER" --format json --jq "$1"
+  gh_project field-list "$BOARD_NUMBER" --owner "$BOARD_OWNER" --format json --jq "$1"
 }
 
 # board_option FIELD_ID NAME -> option id, case-insensitive on the name
@@ -32,17 +52,17 @@ board_option() {
 
 # board_item_for ISSUE_URL -> item id, adding the issue to the board if needed
 board_item_for() {
-  item=$(gh project item-list "$BOARD_NUMBER" --owner "$BOARD_OWNER" --limit 1000 --format json \
+  item=$(gh_project item-list "$BOARD_NUMBER" --owner "$BOARD_OWNER" --limit 1000 --format json \
     --jq ".items[] | select(.content.url == \"$1\") | .id")
   if [ -z "$item" ]; then
-    item=$(gh project item-add "$BOARD_NUMBER" --owner "$BOARD_OWNER" --url "$1" --format json --jq .id)
+    item=$(gh_project item-add "$BOARD_NUMBER" --owner "$BOARD_OWNER" --url "$1" --format json --jq .id)
   fi
   printf '%s\n' "$item"
 }
 
 # board_set_field ITEM FIELD_ID OPTION_ID
 board_set_field() {
-  gh project item-edit --project-id "$BOARD_ID" --id "$1" --field-id "$2" --single-select-option-id "$3" >/dev/null
+  gh_project item-edit --project-id "$BOARD_ID" --id "$1" --field-id "$2" --single-select-option-id "$3" >/dev/null
 }
 
 # issue_set_state_label ISSUE LABEL: add this state label, remove the others

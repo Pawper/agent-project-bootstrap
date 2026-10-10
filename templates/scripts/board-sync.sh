@@ -17,7 +17,7 @@ here=$(dirname "$0")
 board_load "$project" "$owner"
 
 # Board items first: number, State value, Status value, closed or not.
-items=$(gh project item-list "$project" --owner "$owner" --limit 1000 --format json \
+items=$(gh_project item-list "$project" --owner "$owner" --limit 1000 --format json \
   --jq '.items[] | select(.content.type == "Issue") | "\(.content.number)\t\(.state // "")\t\(.status // "")"')
 
 # Then every issue in the repository, open and closed, with its labels.

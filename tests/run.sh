@@ -812,6 +812,13 @@ eq "behind is still mergeable" "MERGEABLE" "$(mergeable_word behind)"
 eq "unknown is unknown" "UNKNOWN" "$(mergeable_word unknown)"
 eq "empty is unknown" "UNKNOWN" "$(mergeable_word '')"
 
+printf '\n# board calls refused for a rate limit\n'
+eq "gh's unknown owner type is a refusal" "yes" "$(board_refusal 'unknown owner type: Pawper')"
+eq "a rate limit message is a refusal" "yes" "$(board_refusal 'GraphQL: API rate limit exceeded for user ID 1')"
+eq "a secondary limit is a refusal" "yes" "$(board_refusal 'You have exceeded a secondary rate limit')"
+eq "a missing field is not" "no" "$(board_refusal 'Project 3 has no State field')"
+eq "empty output is not" "no" "$(board_refusal '')"
+
 printf '\n# the API budget and one queue at a time\n'
 eq "plenty left, no wait" "0" "$(rate_wait "4000	2000" 1000)"
 eq "under the floor, wait until the reset" "600" "$(rate_wait "120	1600" 1000)"

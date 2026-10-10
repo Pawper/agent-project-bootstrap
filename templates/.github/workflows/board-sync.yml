@@ -25,6 +25,14 @@ permissions:
   contents: read
   issues: write
 
+# One batch merge closes many issues at once and would start one run per
+# issue within seconds, each spending GraphQL points on the same board;
+# ten such runs tripped GitHub's secondary limit together. The group
+# collapses a burst to one run, and the sync reads every issue anyway.
+concurrency:
+  group: board-sync
+  cancel-in-progress: true
+
 jobs:
   sync:
     runs-on: ubuntu-latest
