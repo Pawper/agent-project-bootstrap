@@ -296,6 +296,22 @@ task_tier() {
   echo routine
 }
 
+# long_command_reason COMMAND DESCRIPTION [MAX_LINES] [MAX_CHARS]
+# Print why a Bash call should be a script file and a title instead: "N
+# lines" or "N characters" when COMMAND runs past MAX_LINES (default 12)
+# or MAX_CHARS (default 1000), or "no description" when DESCRIPTION is
+# empty. A forty-line program pasted into a heredoc fills the task window
+# with its source and has no name; the same program in .scratch/, run by
+# name with a one-line description, is a titled task and a file the rules
+# already ask for. Print nothing when the call is short and titled.
+long_command_reason() {
+  lc_lines=$(printf '%s\n' "$1" | wc -l | tr -d ' ')
+  lc_chars=$(printf '%s' "$1" | wc -c | tr -d ' ')
+  if [ "$lc_lines" -gt "${3:-12}" ]; then echo "$lc_lines lines"; return 0; fi
+  if [ "$lc_chars" -gt "${4:-1000}" ]; then echo "$lc_chars characters"; return 0; fi
+  [ -n "$(printf '%s' "$2" | tr -d ' \t\r\n')" ] || echo "no description"
+}
+
 # daemon_stop_reason COMMAND
 # Print the command that stops a build daemon shared by every build on the
 # machine: gradlew --stop, gradle --stop, nx reset, or a daemon kill
