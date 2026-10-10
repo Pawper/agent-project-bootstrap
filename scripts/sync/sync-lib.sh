@@ -52,3 +52,33 @@ missing_lines() {
     printf '%s\n' "$ml_have" | grep -qxF "$ml_l" || printf '%s\n' "$ml_l"
   done
 }
+
+# workflow_needs TEXT
+# The secrets and variables a workflow reads, from its ${{ secrets.X }} and
+# ${{ vars.X }} expressions: one line, "secrets A, B; variables C", or
+# nothing when it reads none. The sync prints it for each workflow it
+# adds, so the owner knows what to set before the first run.
+workflow_needs() {
+  wn_s=$(printf '%s\n' "$1" | grep -o 'secrets\.[A-Z0-9_]*' | sed 's/secrets\.//' | sort -u | tr '\n' ' ' | sed 's/ $//; s/ /, /g')
+  wn_v=$(printf '%s\n' "$1" | grep -o 'vars\.[A-Z0-9_]*' | sed 's/vars\.//' | sort -u | tr '\n' ' ' | sed 's/ $//; s/ /, /g')
+  [ -n "$wn_s" ] && printf 'secrets %s' "$wn_s"
+  [ -n "$wn_s" ] && [ -n "$wn_v" ] && printf '; '
+  [ -n "$wn_v" ] && printf 'variables %s' "$wn_v"
+  { [ -n "$wn_s" ] || [ -n "$wn_v" ]; } && echo
+  return 0
+}
+
+# ci_runs_on TEXT
+# The first "runs-on:" value in a workflow, as written ("ubuntu-latest" or
+# "[self-hosted, windows]"), or nothing when it is absent or still the
+# RUNS_ON placeholder. The sync copies it into a workflow it adds.
+ci_runs_on() {
+  printf '%s\n' "$1" | tr -d '\r' | sed -n 's/^[ \t]*runs-on:[ \t]*//p' | sed 's/[ \t]*#.*//; s/[ \t]*$//' | awk '$0 != "" && $0 != "RUNS_ON" { print; exit }'
+}
+
+# ci_shell TEXT
+# The first "shell:" value in a workflow, quotes kept, or nothing when it
+# is absent or still the RUN_SHELL placeholder.
+ci_shell() {
+  printf '%s\n' "$1" | tr -d '\r' | sed -n 's/^[ \t]*shell:[ \t]*//p' | sed 's/[ \t]*$//' | awk '$0 != "" && $0 != "RUN_SHELL" { print; exit }'
+}

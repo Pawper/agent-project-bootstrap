@@ -10,13 +10,16 @@ here=$(dirname "$0")
 . "$here/lib.sh"
 
 if [ $# -ge 2 ]; then
-  paths=$(git diff --name-only "$1" "$2")
+  paths=$(git diff --name-only "$1" "$2") || { echo "Could not read the diff between $1 and $2; the checkout may be shallow (use fetch-depth: 0). This is not a missing spec." >&2; exit 1; }
 else
   paths=$(cat)
 fi
 
 case "$(spec_check_reason "$paths" "${SPEC_TEXT:-}")" in
   missing)
+    if [ -z "${SPEC_TEXT+x}" ]; then
+      echo "The pull request's title and body were not passed to this check (SPEC_TEXT is unset), so a spec named in the body cannot count. Pass them as SPEC_TEXT, as the template workflow does." >&2
+    fi
     echo "This change touches src/ but belongs to no spec. Name it in the pull request body, \"Spec: specs/<feature>\", or, when the design changed, change specs/<feature>/spec.md in the same PR. Do not add a line to a spec just to pass; the constitution does not count." >&2
     exit 1
     ;;

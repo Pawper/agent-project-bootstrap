@@ -16,5 +16,5 @@ here=$(dirname "$0")
 . "$here/board-lib.sh"
 
 board_load "$project" "$owner"
-closed=$(gh issue view "$issue" --json state --jq '.state == "CLOSED"')
+closed=$(gh api "repos/{owner}/{repo}/issues/$issue" --jq '.state == "closed"')
 board_apply "$issue" "$state" "$closed"

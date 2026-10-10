@@ -62,7 +62,7 @@ board_apply() {
   ba_status=$(status_for "$ba_state" "$ba_closed")
   ba_state_opt=$(board_option "$BOARD_STATE_FIELD" "$ba_state")
   [ -n "$ba_state_opt" ] || { echo "The State field has no value \"$ba_state\"." >&2; return 1; }
-  ba_url=$(gh issue view "$ba_issue" --json url --jq .url)
+  ba_url=$(gh api "repos/{owner}/{repo}/issues/$ba_issue" --jq .html_url)
   ba_item=$(board_item_for "$ba_url")
   issue_set_state_label "$ba_issue" "$ba_label"
   board_set_field "$ba_item" "$BOARD_STATE_FIELD" "$ba_state_opt"
