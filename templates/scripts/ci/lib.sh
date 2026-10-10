@@ -32,6 +32,18 @@ EOF
   set +f
 }
 
+# board_refusal TEXT
+# Print "yes" when gh's output means GitHub refused a board call for a
+# rate limit: the gh project commands print "unknown owner type" when
+# their GraphQL query is refused, which says nothing about the real
+# cause, and gh api says "rate limit". Print "no" otherwise.
+board_refusal() {
+  case $(printf '%s' "$1" | tr 'A-Z' 'a-z') in
+    *"unknown owner type"*|*"rate limit"*|*"secondary"*|*"abuse"*) echo yes ;;
+    *) echo no ;;
+  esac
+}
+
 # rerun_free_classes RULES
 # Print the classes named on a "!rerun-free" line of classes.txt: the ones
 # whose moves on main can never make a green pull request red (specs,
